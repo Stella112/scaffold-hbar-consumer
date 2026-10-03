@@ -23,6 +23,11 @@ export const sponsorRequestSchema = z.discriminatedUnion("kind", [
       validUntil: uint,
     }),
     signature: hex,
+    /**
+     * Optional gas floor for intents whose HTS work eth_estimateGas cannot model (token association, HIP-904
+     * airdrops convert their fees into gas). The relayer caps it and its budget policy still prices it.
+     */
+    minGas: uint.optional(),
   }),
   z.object({
     kind: z.literal("session-action"),
@@ -59,7 +64,13 @@ export const toSponsorRequest = {
     owner,
     salt,
   }),
-  ownerIntent: (chainId: number, account: string, intent: OwnerIntent, signature: string): SponsorRequest => ({
+  ownerIntent: (
+    chainId: number,
+    account: string,
+    intent: OwnerIntent,
+    signature: string,
+    opts: { minGas?: bigint } = {},
+  ): SponsorRequest => ({
     kind: "owner-intent",
     chainId,
     account,
@@ -69,6 +80,7 @@ export const toSponsorRequest = {
       validUntil: str(intent.validUntil),
     },
     signature,
+    ...(opts.minGas ? { minGas: str(opts.minGas) } : {}),
   }),
   sessionAction: (
     chainId: number,

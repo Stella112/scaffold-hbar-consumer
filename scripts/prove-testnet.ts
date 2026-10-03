@@ -5,7 +5,7 @@
  * TESTNET_VERIFICATION.md from observed results only. A flow that fails is recorded as FAIL with the error;
  * nothing is filled in by hand.
  */
-import { type Address, type Hex, decodeEventLog, encodeFunctionData, parseAbi, zeroHash } from "viem";
+import { type Address, type Hex, decodeErrorResult, decodeEventLog, encodeFunctionData, parseAbi, zeroHash } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import {
   ACTION_IDS,
@@ -158,10 +158,10 @@ async function flow(n: number, step: string, fn: () => Promise<Evidence | Eviden
   }
 }
 
-const ownerSend = async (calls: Parameters<typeof buildOwnerIntent>[0]) => {
+const ownerSend = async (calls: Parameters<typeof buildOwnerIntent>[0], minGas?: bigint) => {
   const intent = buildOwnerIntent(calls);
   const sig = await signOwnerIntent(controller, chainId, account, intent);
-  return (await sponsor.handle(toSponsorRequest.ownerIntent(chainId, account, intent, sig))).receipt;
+  return (await sponsor.handle(toSponsorRequest.ownerIntent(chainId, account, intent, sig, { minGas }))).receipt;
 };
 
 const actionSend = async (signer: typeof controller, actionId: Hex, data: Hex) => {
@@ -714,11 +714,20 @@ await flow(12, "Token launchpad: HTS token launch, purchase, one-time graduation
   const gradRcpt = await pc.waitForTransactionReceipt({ hash: gradHash });
   await new Promise(r => setTimeout(r, 6000));
   const creatorGain = (await M.getHbarBalance(account)).tinybars - creatorBefore;
-  let second = "no revert";
-  try {
-    await pc.simulateContract({ address: pad.address, abi: padAbi, functionName: "graduate", args: [id], account: operatorWallet.account! });
-  } catch (e) {
-    second = (e as { shortMessage?: string }).shortMessage ?? String(e);
+  // The relay drops revert data, so ask Mirror Node's simulator and decode the error name.
+  const sim = await fetch(`${HEDERA_TESTNET.mirrorUrl}/contracts/call`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ from: operatorWallet.account!.address, to: pad.address, estimate: false, data: encodeFunctionData({ abi: padAbi, functionName: "graduate", args: [id] }) }),
+  }).then(r => r.json() as Promise<{ result?: Hex; _status?: { messages?: { data?: Hex }[] } }>);
+  const revertData = sim._status?.messages?.[0]?.data;
+  let second = sim.result ? "no revert" : "reverted";
+  if (revertData && revertData !== "0x") {
+    try {
+      second = decodeErrorResult({ abi: padAbi, data: revertData }).errorName;
+    } catch {
+      second = revertData;
+    }
   }
   const g: Evidence = { ...b, step: "Graduation pays the creator exactly once", input: `graduate(${id}) twice`, expected: "creator +1 HBAR once; second graduate reverts AlreadyGraduated", transactionHash: gradHash, mirrorQuery: resultQuery(gradHash), actual: `first status=${gradRcpt.status}, creator delta=${creatorGain}; second: ${second}`, status: gradRcpt.status === "success" && creatorGain === 100_000_000n && /AlreadyGraduated/.test(second) ? "PASS" : "FAIL", timestamp: now() };
   out.push(g);
@@ -733,10 +742,14 @@ await flow(12, "Token launchpad: HTS token launch, purchase, one-time graduation
   const c: Evidence = { ...b, step: "Buyer claims via HIP-904 airdrop", input: `claim(${id})`, expected: "10000 units delivered or pending (claimable) for the buyer", transactionHash: claimHash, mirrorQuery: `${HEDERA_TESTNET.mirrorUrl}/accounts/${op.HEDERA_OPERATOR_ID}/airdrops/pending`, actual: `status=${claimRcpt.status}; balance=${opBal ?? 0}; pending=${pending.map(p => p.amount).join(",") || "none"}`, status: claimRcpt.status === "success" && (opBal === 10_000n || pending.some(p => p.amount === 10_000)) ? "PASS" : "FAIL", timestamp: now() };
   out.push(c);
 
-  const creatorClaim = await ownerSend([
-    selfCall.associateToken(account, info.token),
-    { target: pad.address, value: 200_000_000n, data: encodeFunctionData({ abi: padAbi, functionName: "claim", args: [id] }) },
-  ]);
+  // Association and HIP-904 fees are charged as gas inside the call; eth_estimateGas misses them, so ask for a floor.
+  const creatorClaim = await ownerSend(
+    [
+      selfCall.associateToken(account, info.token),
+      { target: pad.address, value: 200_000_000n, data: encodeFunctionData({ abi: padAbi, functionName: "claim", args: [id] }) },
+    ],
+    2_500_000n,
+  );
   const accountTokens = await balanceOf(info.token, account);
   const cc = fromReceipt(12, "Creator associates and claims unsold + retained supply", creatorClaim, {
     asset: "SDEMO",

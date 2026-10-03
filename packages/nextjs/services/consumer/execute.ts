@@ -25,12 +25,23 @@ import { type Address, type LocalAccount, encodeFunctionData, parseAbi } from "v
 const chainId = HEDERA_TESTNET.chainId;
 const mirror = new MirrorClient({ baseUrl: process.env.NEXT_PUBLIC_MIRROR_NODE_URL || HEDERA_TESTNET.mirrorUrl });
 
-export const ownerCalls = async (controller: LocalAccount, account: Address, calls: Call[]) => {
+export const ownerCalls = async (controller: LocalAccount, account: Address, calls: Call[], minGas?: bigint) => {
   const intent = buildOwnerIntent(calls);
   return sponsor(
-    toSponsorRequest.ownerIntent(chainId, account, intent, await signOwnerIntent(controller, chainId, account, intent)),
+    toSponsorRequest.ownerIntent(
+      chainId,
+      account,
+      intent,
+      await signOwnerIntent(controller, chainId, account, intent),
+      {
+        minGas,
+      },
+    ),
   );
 };
+
+/** Gas floor for intents with HTS association / HIP-904 work (their fees become gas; estimates miss them). */
+export const HTS_INTENT_GAS = 2_500_000n;
 
 const typedAction = async (
   controller: LocalAccount,
@@ -239,13 +250,18 @@ export async function launchCall(
   const tokenId = token ? longZeroToEntityId(token) : null;
   const needsAssociation =
     fn === "claim" && token && tokenId && !(await mirror.isAssociated(account, tokenId).catch(() => false));
-  return ownerCalls(controller, account, [
-    ...(needsAssociation ? [selfCall.associateToken(account, token!)] : []),
-    {
-      target: testnetDeployment.launchpad!.address,
-      // A claim's HIP-904 airdrop fee is charged to the launchpad, so send some HBAR along; the rest comes back.
-      value: fn === "claim" ? CLAIM_FEE_TINYBARS : 0n,
-      data: encodeFunctionData({ abi: tokenLaunchpadAbi, functionName: fn, args: [id] }),
-    },
-  ]);
+  return ownerCalls(
+    controller,
+    account,
+    [
+      ...(needsAssociation ? [selfCall.associateToken(account, token!)] : []),
+      {
+        target: testnetDeployment.launchpad!.address,
+        // A claim's HIP-904 airdrop fee is charged to the launchpad, so send some HBAR along; the rest comes back.
+        value: fn === "claim" ? CLAIM_FEE_TINYBARS : 0n,
+        data: encodeFunctionData({ abi: tokenLaunchpadAbi, functionName: fn, args: [id] }),
+      },
+    ],
+    fn === "claim" ? HTS_INTENT_GAS : undefined,
+  );
 }

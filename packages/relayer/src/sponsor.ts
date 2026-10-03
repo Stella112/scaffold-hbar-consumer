@@ -77,6 +77,8 @@ type Prepared = {
   dedupeKey: string;
   intentHash: Hex;
   summary: { asset: Address | null; amount: bigint | null; recipient: Address | null; target: Address | null };
+  /** Client-requested gas floor (owner intents doing HTS work); capped at MAX_GAS. */
+  minGas?: bigint;
 };
 
 export type SponsorResult = { receipt: Receipt; auditError: string | null };
@@ -229,6 +231,7 @@ export class Sponsor {
         dedupeKey: `sig:${keccak256(req.signature as Hex)}`,
         intentHash,
         summary: { asset: null, amount: first.value, recipient: null, target: first.target },
+        ...(req.minGas ? { minGas: BigInt(req.minGas) } : {}),
       };
     }
 
@@ -302,7 +305,8 @@ export class Sponsor {
   private async estimateGas(p: Prepared): Promise<bigint> {
     const est = await this.d.publicClient.estimateGas({ account: this.d.walletClient.account, to: p.to, data: p.data });
     const padded = (est * GAS_HEADROOM_NUM) / GAS_HEADROOM_DEN;
-    const floor = p.action === "airdrop" ? AIRDROP_MIN_GAS : MIN_GAS;
+    let floor = p.action === "airdrop" ? AIRDROP_MIN_GAS : MIN_GAS;
+    if (p.minGas && p.minGas > floor) floor = p.minGas > MAX_GAS ? MAX_GAS : p.minGas;
     return padded < floor ? floor : padded > MAX_GAS ? MAX_GAS : padded;
   }
 
