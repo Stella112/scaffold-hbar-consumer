@@ -6,6 +6,8 @@
 npx create-scaffold-hbar@latest --template Stella112/scaffold-hbar-consumer
 ```
 
+**Live demo (Hedera testnet):** https://hbar.38-49-209-149.sslip.io
+
 > Testnet software. Unaudited. Do not use with mainnet funds.
 
 ---
@@ -24,7 +26,9 @@ npx create-scaffold-hbar@latest --template Stella112/scaffold-hbar-consumer
 | 8 | Agent red team: withdraw / escalate / unknown action / wrong recipient are denied with reason codes and HCS records |
 | 9 | Raw-call bypass: denied by the relayer *and* reverted on-chain when submitted directly, with a correlated HCS denial |
 
-If `TESTNET_VERIFICATION.md` is missing, the proof has not been run for this checkout. Nothing in it is hand-written.
+All flows above pass in the committed [`TESTNET_VERIFICATION.md`](TESTNET_VERIFICATION.md) (run 2026-10-03). Nothing in it is hand-written.
+
+Reference testnet deployment: ConsumerAccountFactory [0.0.10841522](https://hashscan.io/testnet/contract/0.0.10841522), HCS audit topic [0.0.10841526](https://hashscan.io/testnet/topic/0.0.10841526), sponsor [0.0.10841387](https://hashscan.io/testnet/account/0.0.10841387).
 
 ## Quickstart
 
