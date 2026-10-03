@@ -85,3 +85,44 @@ contract CallTarget {
         hits++;
     }
 }
+
+/// Test-only. Exact-output router that pulls `quotedIn` of tokenIn and pays `deliver` of tokenOut.
+/// `deliver` and `quotedIn` can be skewed to simulate a misbehaving router.
+contract MockSwapRouter {
+    struct ExactOutputParams {
+        bytes path;
+        address recipient;
+        uint256 deadline;
+        uint256 amountOut;
+        uint256 amountInMaximum;
+    }
+
+    MockERC20 public immutable tokenIn;
+    MockERC20 public immutable tokenOut;
+    uint256 public quotedIn;
+    int256 public deliverSkew;
+    bool public ignoreMax;
+
+    constructor(MockERC20 tokenIn_, MockERC20 tokenOut_, uint256 quotedIn_) {
+        tokenIn = tokenIn_;
+        tokenOut = tokenOut_;
+        quotedIn = quotedIn_;
+    }
+
+    function setDeliverSkew(int256 skew) external {
+        deliverSkew = skew;
+    }
+
+    function setIgnoreMax(bool v) external {
+        ignoreMax = v;
+    }
+
+    function exactOutput(ExactOutputParams calldata p) external payable returns (uint256 amountIn) {
+        require(block.timestamp <= p.deadline, "expired");
+        amountIn = quotedIn;
+        require(ignoreMax || amountIn <= p.amountInMaximum, "slippage");
+        tokenIn.transferFrom(msg.sender, address(this), amountIn);
+        tokenOut.mint(p.recipient, uint256(int256(p.amountOut) + deliverSkew));
+        if (ignoreMax) return p.amountInMaximum + 1;
+    }
+}

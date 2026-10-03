@@ -10,6 +10,7 @@ import { IHederaTokenService } from "./interfaces/IHederaTokenService.sol";
 import { IPriceOracle } from "./interfaces/IPriceOracle.sol";
 import { ITransferExecutor } from "./interfaces/ITransferExecutor.sol";
 import { Actions } from "./Actions.sol";
+import { ISaucerSwapV2Router } from "./interfaces/ISaucerSwapV2Router.sol";
 
 /// @title ConsumerAccount
 /// @notice Programmable account for a human controller and the agents it delegates to.
@@ -82,6 +83,19 @@ contract ConsumerAccount is EIP712, ReentrancyGuard, ITransferExecutor {
         uint128 spentTodayUsd6;
     }
 
+    /// Swap `tokenIn` for exactly `amountOut` of `tokenOut` delivered straight to `to`.
+    /// `path` is a SaucerSwap V2 exact-output path: tokenOut, fee, ..., fee, tokenIn.
+    struct SwapToPay {
+        address router;
+        address tokenIn;
+        uint256 amountInMaximum;
+        address tokenOut;
+        uint256 amountOut;
+        address to;
+        uint256 deadline;
+        bytes path;
+    }
+
     struct Recovery {
         address newOwner;
         uint64 round;
@@ -118,6 +132,9 @@ contract ConsumerAccount is EIP712, ReentrancyGuard, ITransferExecutor {
     error NoRecoveryPending();
     error RecoveryAlreadyApproved();
     error RecoveryNotReady();
+    error SwapPathMismatch();
+    error SwapUnderdelivered(uint256 delivered, uint256 requested);
+    error SwapOverspent(uint256 amountIn, uint256 amountInMaximum);
 
     // ---------------------------------------------------------------- events
 
@@ -137,6 +154,10 @@ contract ConsumerAccount is EIP712, ReentrancyGuard, ITransferExecutor {
     event RecoveryExecuted(uint64 indexed round, address indexed newOwner);
     event OracleUpdated(address oracle);
     event TokenAssociated(address indexed token);
+    event SwapRouterSet(address indexed router, bool allowed);
+    event SwapToPayExecuted(
+        address indexed signer, address tokenIn, uint256 amountIn, address tokenOut, uint256 amountOut, address to
+    );
 
     // ---------------------------------------------------------------- storage
 
@@ -160,6 +181,9 @@ contract ConsumerAccount is EIP712, ReentrancyGuard, ITransferExecutor {
     Recovery public recovery;
     /// keccak256(round, guardian) => approved
     mapping(bytes32 => bool) internal _recoveryApproved;
+
+    /// Routers the owner trusts for swap-to-pay. Sessions cannot change this list.
+    mapping(address => bool) public swapRouterAllowed;
 
     // ---------------------------------------------------------------- construction
 
@@ -218,6 +242,17 @@ contract ConsumerAccount is EIP712, ReentrancyGuard, ITransferExecutor {
             if (Actions.isPrivileged(id)) revert PrivilegeEscalation();
             if (Actions.isWithdrawal(id)) revert WithdrawForbidden();
             if (!_sessionActionAllowed[_actionKey(signer, _sessions[signer].epoch, id)]) revert ActionNotAllowed();
+        }
+
+        if (id == Actions.SWAP_TO_PAY) {
+            SwapToPay memory p = abi.decode(action.actionData, (SwapToPay));
+            if (!swapRouterAllowed[p.router]) revert TargetNotAllowed();
+            // Worst case the account spends amountInMaximum of tokenIn; price and cap that.
+            uint256 swapUsd6 = isOwner ? 0 : _chargeSession(signer, p.tokenIn, p.to, p.amountInMaximum);
+            uint256 amountIn = _swapToPay(p);
+            emit SwapToPayExecuted(signer, p.tokenIn, amountIn, p.tokenOut, p.amountOut, p.to);
+            emit ActionExecuted(id, signer, p.tokenOut, p.to, p.amountOut, swapUsd6);
+            return;
         }
 
         (address asset, address to, uint256 amount) = _decodeTransferAction(id, action.actionData);
@@ -299,6 +334,12 @@ contract ConsumerAccount is EIP712, ReentrancyGuard, ITransferExecutor {
     function revokeSession(address key) external onlySelf {
         delete _sessions[key];
         emit SessionRevoked(key);
+    }
+
+    function setSwapRouter(address router, bool allowed) external onlySelf {
+        if (router == address(0) || router == HTS || router == address(this)) revert InvalidConfig();
+        swapRouterAllowed[router] = allowed;
+        emit SwapRouterSet(router, allowed);
     }
 
     function setOracle(IPriceOracle oracle_) external onlySelf {
@@ -467,6 +508,49 @@ contract ConsumerAccount is EIP712, ReentrancyGuard, ITransferExecutor {
         });
         int64 rc = IHederaTokenService(HTS).airdropTokens(lists);
         if (rc != HTS_SUCCESS) revert HtsCallFailed(rc);
+    }
+
+    /// @dev Approves exactly amountInMaximum, swaps, revokes the approval and verifies the recipient's balance grew
+    ///      by at least amountOut. Unspent input never leaves the account (exact-output pulls only what it needs).
+    function _swapToPay(SwapToPay memory p) internal returns (uint256 amountIn) {
+        if (p.tokenIn == address(0) || p.tokenOut == address(0) || p.to == address(0) || p.amountOut == 0) {
+            revert InvalidConfig();
+        }
+        if (block.timestamp > p.deadline) revert IntentExpired();
+        if (_firstAddress(p.path) != p.tokenOut || _lastAddress(p.path) != p.tokenIn) revert SwapPathMismatch();
+
+        IERC20 out = IERC20(p.tokenOut);
+        uint256 before = out.balanceOf(p.to);
+        IERC20(p.tokenIn).forceApprove(p.router, p.amountInMaximum);
+        amountIn = ISaucerSwapV2Router(p.router)
+            .exactOutput(
+                ISaucerSwapV2Router.ExactOutputParams({
+                    path: p.path,
+                    recipient: p.to,
+                    deadline: p.deadline,
+                    amountOut: p.amountOut,
+                    amountInMaximum: p.amountInMaximum
+                })
+            );
+        IERC20(p.tokenIn).forceApprove(p.router, 0);
+        if (amountIn > p.amountInMaximum) revert SwapOverspent(amountIn, p.amountInMaximum);
+        uint256 delivered = out.balanceOf(p.to) - before;
+        if (delivered < p.amountOut) revert SwapUnderdelivered(delivered, p.amountOut);
+    }
+
+    function _firstAddress(bytes memory path) internal pure returns (address a) {
+        if (path.length < 43) revert SwapPathMismatch();
+        assembly {
+            a := shr(96, mload(add(path, 32)))
+        }
+    }
+
+    function _lastAddress(bytes memory path) internal pure returns (address a) {
+        uint256 len = path.length;
+        if (len < 43 || (len - 20) % 23 != 0) revert SwapPathMismatch();
+        assembly {
+            a := shr(96, mload(add(add(path, 32), sub(len, 20))))
+        }
     }
 
     function _approveRecovery(address guardian) internal {

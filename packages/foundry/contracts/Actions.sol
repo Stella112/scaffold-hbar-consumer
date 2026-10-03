@@ -11,6 +11,8 @@ library Actions {
     bytes32 internal constant AIRDROP = keccak256("consumer.action.airdrop.v1");
     /// Used for session-signed x402 transferExecutor authorizations (not dispatched through executeSessionAction).
     bytes32 internal constant X402_PAYMENT = keccak256("consumer.action.x402-payment.v1");
+    /// actionData = abi.encode(ConsumerAccount.SwapToPay); SaucerSwap V2 exact-output swap paid to a recipient
+    bytes32 internal constant SWAP_TO_PAY = keccak256("consumer.action.swap-to-pay.v1");
 
     // Reserved privileged identifiers. A session presenting one of these is attempting escalation.
     bytes32 internal constant ADMIN_SET_OWNER = keccak256("consumer.admin.set-owner.v1");
