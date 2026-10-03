@@ -1,0 +1,42 @@
+[profile.default]
+src = 'contracts'
+out = 'out'
+libs = ['lib']
+fs_permissions = [
+    { access = "read-write", path = "deployments" },
+    { access = "read-write", path = "./" }
+]
+ffi = true
+evm_version = "cancun"
+optimizer = true
+optimizer_runs = 200
+
+# Suppress style lints for API/modifier names we don't control
+[lint]
+# Reviewed lints (see docs/SECURITY_INVARIANTS.md):
+# - block-timestamp: expiry, timelock and daily-cap windows are defined by consensus time on Hedera.
+# - arbitrary-send-eth: value transfers only happen after owner/session signature + policy checks.
+# - calls-loop / require-revert-in-loop: owner batches revert atomically by design.
+# - reentrancy-events: state-changing entrypoints are nonReentrant and follow checks-effects-interactions.
+exclude_lints = ["mixed-case-variable", "mixed-case-function", "block-timestamp", "arbitrary-send-eth", "calls-loop", "require-revert-in-loop", "reentrancy-events"]
+
+[rpc_endpoints]
+localhost = "http://127.0.0.1:8545"
+hedera_testnet = "https://testnet.hashio.io/api"
+hedera_mainnet = "https://mainnet.hashio.io/api"
+
+# Hedera is now supported on the main Sourcify instance (sourcify.dev).
+# Use: forge verify-contract <ADDRESS> <CONTRACT> --chain-id 296 --verifier sourcify
+# See: https://hedera.com/blog/smart-contract-verification-sourcify-dev-now-supported
+[etherscan]
+hedera_testnet = { key = "", url = "https://hashscan.io/testnet" }
+hedera_mainnet = { key = "", url = "https://hashscan.io/mainnet" }
+
+[fmt]
+line_length = 120
+tab_width = 4
+quote_style = "double"
+bracket_spacing = true
+int_types = "long"
+
+# See more config options https://book.getfoundry.sh/reference/config/overview
