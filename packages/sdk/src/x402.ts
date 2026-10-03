@@ -123,3 +123,13 @@ export class TransferExecutorClient {
     return { x402Version, payload: payload as unknown as Record<string, unknown> };
   }
 }
+
+/**
+ * @x402/core client spend controls admitting HBAR on Hedera testnet with an atomic per-payment cap.
+ * Defence in depth: the ConsumerAccount still enforces the session's USD caps on chain.
+ */
+export const x402HbarSpendControls = (maxTinybarsPerPayment: bigint) => ({
+  allowedAssets: [
+    { network: X402_HEDERA_TESTNET as `${string}:${string}`, asset: X402_HBAR_ASSET, maxAmountPerPayment: maxTinybarsPerPayment.toString() },
+  ],
+});

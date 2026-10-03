@@ -31,6 +31,7 @@ import {
   X402_HBAR_ASSET,
   X402_HEDERA_TESTNET,
   X402_VERSION,
+  x402HbarSpendControls,
   x402PayToAddress,
 } from "@sh/sdk";
 import { TransferExecutorFacilitator, createTestnetSponsor, loadRelayerConfig, toMirrorTransactionId } from "@sh/relayer";
@@ -313,10 +314,9 @@ await flow(6, "x402 exact / transferExecutor payment by an agent session", async
     resource: { url: "https://hbar.38-49-209-149.sslip.io/api/x402/premium", description: "premium data", mimeType: "application/json" },
     accepts: [requirements],
   };
-  const client = new x402Client().register(
-    X402_HEDERA_TESTNET,
-    new TransferExecutorClient({ signer: x402Agent, chainId, account, accountId: executorId }),
-  );
+  const client = new x402Client()
+    .register(X402_HEDERA_TESTNET, new TransferExecutorClient({ signer: x402Agent, chainId, account, accountId: executorId }))
+    .setSpendControls(x402HbarSpendControls(100_000_000n)); // client-side cap: 1 HBAR per payment
   // Wire round trip through the PAYMENT-SIGNATURE header encoding.
   const payload = decodePaymentSignatureHeader(encodePaymentSignatureHeader(await client.createPaymentPayload(paymentRequired)));
 
