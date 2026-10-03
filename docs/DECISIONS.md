@@ -19,3 +19,9 @@
 | D15 | 2026-10-03 | Dependencies: `viem@2.39.0` (same as template frontend), `zod@4.6.5` (wire/env schemas), `tsx@4.23.15` (run TS scripts), `dotenv@18.0.5` (load `.env` in scripts). | Each pinned to a version checked on npm 2026-10-03. |
 | D16 | 2026-10-03 | Demo swap pair WHBAR → USDC(0.0.5449) on the 0.30% pool; the account wraps HBAR via `WHBAR.deposit()`. | Live liquidity verified; avoids depending on faucet tokens. |
 | D17 | 2026-10-03 | Agent guidance lives only in AGENTS.md; no tool-specific instruction files. | Owner requirement. |
+| D18 | 2026-10-03 | Session USD caps priced by `SupraPriceOracle` over Supra push feeds (HBAR_USD 432, USDC_USD 89, max age 2 h, round up). | Pyth testnet prices were stale and Hermes now requires an API key; Supra feeds are pushed by Supra. |
+| D19 | 2026-10-03 | x402 `transferExecutor` implemented in this template on `@x402/core` (facilitator + client); payTo resolves to the account's EVM alias. | `@x402/hedera@2.28.0` lacks the method; HBAR to an aliased account's long-zero address fails from a contract. |
+| D20 | 2026-10-03 | Recurring payments reschedule themselves through HSS; execution is permissionless but inert; 2M gas per instalment, scheduled 10 s after due. | No keeper needed; measured HSS cost and block-timestamp lag. |
+| D21 | 2026-10-04 | Vault and launchpad are standalone contracts; the account only gains `vault-deposit` and the share-transfer guard. | Factory is 341 bytes under the 24 KB limit (it embeds the account's creation code); a clone-based factory is the path for further account features. |
+| D22 | 2026-10-04 | Airdrop fees outside session caps are documented, not fixed on-chain. | Fix needs account bytecode the factory margin cannot hold; the app never grants `airdrop` to agents. |
+| D23 | 2026-10-04 | Sponsor requests may carry `minGas` (capped, budget-priced). | HTS association / airdrop fees are charged as gas and `eth_estimateGas` does not model them. |

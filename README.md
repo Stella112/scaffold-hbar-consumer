@@ -1,6 +1,6 @@
 # Scaffold-HBAR Consumer
 
-**A Scaffold-HBAR template for programmable Hedera accounts: users pay with zero HBAR (a sponsor covers fees), request money by QR/link, swap-to-pay through SaucerSwap, deliver tokens to unassociated recipients with HIP-904, schedule recurring payments with the Hedera Schedule Service, and give AI agents USD-capped allowances (priced live by Supra) that the account enforces on-chain — usable over x402 and MCP, with every policy decision audited to HCS.**
+**A Scaffold-HBAR template for programmable Hedera accounts: users pay with zero HBAR (a sponsor covers fees), request money by QR/link, swap-to-pay through SaucerSwap, deliver tokens to unassociated recipients with HIP-904, schedule recurring payments with the Hedera Schedule Service, save in an agent-safe vault, launch fixed-supply HTS tokens, and give AI agents USD-capped allowances (priced live by Supra) that the account enforces on-chain — usable over x402 and MCP, with every policy decision audited to HCS.**
 
 ```bash
 npx create-scaffold-hbar@latest --template Stella112/scaffold-hbar-consumer
@@ -28,10 +28,12 @@ npx create-scaffold-hbar@latest --template Stella112/scaffold-hbar-consumer
 | 8 | Agent pays within live **Supra**-priced USD caps; over-cap, withdraw, escalate, unknown action and wrong recipient are denied with reason codes and HCS records |
 | 9 | Raw-call bypass: denied by the relayer *and* reverted on-chain when submitted directly, with a correlated HCS denial |
 | 10 | **Recurring payment** created once by the owner and executed twice by the **Hedera Schedule Service** with no further transactions |
+| 11 | **Savings vault**: an agent deposits within its caps; paying the vault shares away or withdrawing is denied; the owner redeems |
+| 12 | **Token launchpad**: an immutable fixed-supply HTS token is launched, bought to target, graduates exactly once (second call `AlreadyGraduated`), and claims arrive by HIP-904 airdrop |
 
 Results are in the committed [`TESTNET_VERIFICATION.md`](TESTNET_VERIFICATION.md). Nothing in it is hand-written.
 
-Reference testnet deployment (source verified on Sourcify): ConsumerAccountFactory [0.0.10845379](https://hashscan.io/testnet/contract/0.0.10845379), SupraPriceOracle [0.0.10844780](https://hashscan.io/testnet/contract/0.0.10844780), HCS audit topic [0.0.10841526](https://hashscan.io/testnet/topic/0.0.10841526), sponsor [0.0.10841387](https://hashscan.io/testnet/account/0.0.10841387).
+Reference testnet deployment (all source-verified on Sourcify, `exact_match`): ConsumerAccountFactory [0.0.10848625](https://hashscan.io/testnet/contract/0.0.10848625), SupraPriceOracle [0.0.10844780](https://hashscan.io/testnet/contract/0.0.10844780), SavingsVault [0.0.10848627](https://hashscan.io/testnet/contract/0.0.10848627), TokenLaunchpad [0.0.10848836](https://hashscan.io/testnet/contract/0.0.10848836), HCS audit topic [0.0.10841526](https://hashscan.io/testnet/topic/0.0.10841526), sponsor [0.0.10841387](https://hashscan.io/testnet/account/0.0.10841387).
 
 ## Quickstart
 
@@ -59,11 +61,11 @@ agent session key  ──signs typed action─┘     │  validate · dedupe ·
 
 | Package | Role |
 | --- | --- |
-| `packages/foundry` | `ConsumerAccount` (+ HSS subscriptions), `ConsumerAccountFactory`, `SupraPriceOracle`, typed `Actions`, 87 Foundry tests |
+| `packages/foundry` | `ConsumerAccount` (+ HSS subscriptions, vault deposits), `ConsumerAccountFactory`, `SupraPriceOracle`, `SavingsVault`, `TokenLaunchpad`, typed `Actions`, 112 Foundry tests |
 | `packages/sdk` | Framework-independent TypeScript: EIP-712 intents, typed action codecs, payment requests, reason codes, Mirror client, receipts, generated ABIs |
 | `packages/relayer` | Sponsor pipeline (`Sponsor`), x402 `TransferExecutorFacilitator`, standalone HTTP server, HCS auditor |
 | `packages/mcp` | MCP server for AI agents: `get_allowance`, `pay`, `fetch_paid_resource` (x402), `get_audit_log` |
-| `packages/nextjs` | Consumer app: Home, Pay, Request, Recurring, Activity, Agent, Sponsor, Developer; sponsor + x402 API routes reuse `@sh/relayer` |
+| `packages/nextjs` | Consumer app: Home, Pay, Request, Recurring, Save, Launch, Activity, Agent, Sponsor, Developer; sponsor + x402 API routes reuse `@sh/relayer` |
 | `scripts` | `doctor`, `bootstrap`, `prove:testnet`, `sponsor:fund`, `check:scaffold` |
 
 Two layers of enforcement: the **relayer** protects the sponsor's HBAR (budgets, rate limits, simulation); the **account contract** protects user assets (signatures, nonces, expiry, session policy). A compromised relayer cannot authorize anything; a compromised session cannot widen its own authority.
@@ -122,7 +124,15 @@ Tools: `get_allowance` (caps, spent today, expiry, live HBAR/USD), `pay` (HBAR/U
 
 ## Recurring payments
 
-**Recurring** creates an HBAR payment plan. The account schedules each instalment with the **Hedera Schedule Service** (`scheduleCall` on `0x16b`, HIP-1215); each execution pays the configured recipient and schedules the next — no server or keeper. Execution is permissionless but inert (only the owner-configured payment, only when due); creation and cancellation are owner-only. Scheduled transactions are paid by the account, so it needs a little HBAR.
+**Recurring** creates an HBAR payment plan. The account schedules each instalment with the **Hedera Schedule Service** (`scheduleCall` on `0x16b`, HIP-1215); each execution pays the configured recipient and schedules the next — no server or keeper. Execution is permissionless but inert (only the owner-configured payment, only when due); creation and cancellation are owner-only. Scheduled transactions are paid by the account (~2M gas, about 1.5–1.7 testnet HBAR per instalment, because HSS `scheduleCall` itself costs ~1.54M gas), so it needs some HBAR.
+
+## Savings vault (recipe)
+
+`SavingsVault` is an OpenZeppelin ERC-4626 vault over an HTS token (WHBAR in the reference deployment), with a decimals offset of 9 against first-depositor inflation and a constructor that associates the vault with the token. **Save** deposits and withdraws. Agents can be granted the typed `vault-deposit` action: deposits go only to owner-allowlisted vaults, count against the session's USD caps, use an exact approval that is reset, and always mint shares to the account. Agents can never withdraw (`vault-withdraw` / `vault-redeem` are reserved → `WITHDRAW_FORBIDDEN`), and the shares of any vault ever allowed are untransferable for sessions through every action, so "paying" the shares away is also a withdrawal and is denied.
+
+## Token launchpad (recipe)
+
+`TokenLaunchpad` creates an HTS token through the Token Service with **no admin, supply, freeze, wipe or pause keys** and a finite supply, holds it as treasury, and sells it at a fixed price. Reaching the target lets anyone `graduate` the launch **exactly once** (the creator receives the HBAR; a second call reverts `AlreadyGraduated`); buyers and the creator then `claim` by HIP-904 airdrop, so nobody has to associate first. Missing the deadline opens one-time refunds instead. The creator pays the token-creation fee (about $1, unspent part refunded); a claim funds its own airdrop fee, and reverts rather than let it touch HBAR held for other launches. Agents have no typed action for buying launches.
 
 ## Hedera services used
 
@@ -179,7 +189,10 @@ Add a typed action by giving it a stable ID in `Actions.sol` and `sdk/src/action
 - Testnet only; contracts are unaudited.
 - Supra testnet feeds update hourly (or on a 5% move); if a feed goes stale for over 2 hours, agent spending is denied until it updates.
 - x402 here settles through ConsumerAccounts (`transferExecutor`); `cryptoTransfer` payers use `@x402/hedera` directly.
-- Recurring payments are HBAR-only in the UI (the contract also supports HTS tokens). Vault and launchpad recipes are not built.
+- Recurring payments are HBAR-only in the UI (the contract also supports HTS tokens).
+- A session's `airdrop` action makes the account pay HIP-904 fees (~1 HBAR per pending airdrop) outside its USD caps; the app never grants it to agents ([`SECURITY.md`](SECURITY.md)).
+- The factory is 341 bytes under the 24 KB contract-size limit because it embeds the account's creation code; new account features would first need a clone-based factory ([`docs/DECISIONS.md`](docs/DECISIONS.md)).
+- The savings vault has no yield strategy; the launchpad sells at a fixed price (no bonding curve or DEX listing).
 - The browser controller key is a testnet convenience stored in localStorage, not production custody.
 
 ## Troubleshooting
@@ -194,6 +207,8 @@ Add a typed action by giving it a stable ID in `Actions.sol` and `sdk/src/action
 | `SPONSOR_BUDGET_EXCEEDED` / `SPONSOR_USER_BUDGET_EXCEEDED` | Daily sponsor policy reached; raise the limits in `.env` or wait for the UTC day to roll. |
 | Sponsored calls fail with insufficient funds | `yarn doctor` shows the sponsor balance; `yarn sponsor:fund 100 --fund`. |
 | HBAR to a `0x000…` address fails from a contract | Use the account's EVM alias; see [`docs/HEDERA_GOTCHAS.md`](docs/HEDERA_GOTCHAS.md). |
+| Launchpad claim reverts `HtsCallFailed(10)` | Send HBAR with the claim for its airdrop fee (the app sends 2 HBAR; the rest is refunded). |
+| An intent that associates a token then transfers runs out of gas | HTS fees are charged as gas and not estimated; pass `minGas` with the sponsor request (the app uses 2.5M). |
 
 ## License
 

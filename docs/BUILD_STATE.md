@@ -1,49 +1,56 @@
 # Build state
 
-**Updated:** 2026-10-03 · **Current milestone:** M2–M4 verified on testnet; public app deployed.
+**Updated:** 2026-10-04 · **Status:** all planned features built and verified on Hedera testnet; live app deployed.
 
 ## Gates
 
 | Gate | Status | Evidence |
 | --- | --- | --- |
-| `forge fmt --check`, `forge build`, `forge test` | PASS | 60 tests (owner intents, session policy, x402 executor, recovery, factory, swap-to-pay) |
-| SDK typecheck + tests | PASS | 19 tests incl. Anvil e2e with compiled contracts |
-| Relayer typecheck + tests | PASS | 12 tests incl. full sponsor pipeline on Anvil |
-| Scripts typecheck | PASS | |
-| lint / typecheck / test / build (Linux VPS, fresh clone) | PASS | |
-| `yarn doctor` | PASS | no FAIL; WARNs are oracle + x402 (blocked externally) |
-| M1 account + policy | VERIFIED_LOCAL | `docs/SECURITY_INVARIANTS.md` |
-| M2 zero-HBAR sponsored flow | VERIFIED_TESTNET | `TESTNET_VERIFICATION.md` flows 1–2 |
-| M3 payments + HIP-904 | VERIFIED_TESTNET | flows 3, 5 |
-| M4 SaucerSwap swap-to-pay | VERIFIED_TESTNET | flow 4 |
-| Agent red team / raw-call bypass | VERIFIED_TESTNET | flows 8, 9 |
-| M5 agent / MCP / x402 | partial: on-chain policy + executor done; MCP, x402 resource, oracle not built | U7, U9, U10 blocked |
-| M6 recovery + HSS | recovery VERIFIED_LOCAL; HSS not built | |
-| M7 vault / launchpad | not started | |
-| Next.js app (consumer UI) | DEPLOYED | https://hbar.38-49-209-149.sslip.io (systemd `scaffold-hbar-consumer`, Caddy) |
-| Fresh external scaffold gate | PASS | `npx create-scaffold-hbar@latest --template Stella112/scaffold-hbar-consumer` on Linux → install, typecheck, lint, test, build, boot, 9 routes 200 (`yarn check:scaffold`) |
+| `forge fmt --check`, `forge build`, `forge test` | PASS | 112 tests: owner intents, session policy, x402 executor, recovery, factory, swap-to-pay, Supra oracle (incl. fuzz), HSS subscriptions, savings vault, launchpad |
+| SDK / relayer / MCP tests | PASS | 19 / 22 / 3 (incl. Anvil e2e, x402 settlement-record conformance, MCP over in-memory transport) |
+| lint / typecheck / build (Linux VPS, fresh clone) | PASS | |
+| Fresh external scaffold gate | PASS | `yarn check:scaffold` (rerun on final code before submission) |
+| `yarn doctor` | PASS | no FAIL |
+| Contract source verification | PASS | Sourcify `exact_match`: factory, ConsumerAccount, SupraPriceOracle, SavingsVault, TokenLaunchpad |
+
+## Features → testnet proof (`TESTNET_VERIFICATION.md`)
+
+| Feature | Status | Flow |
+| --- | --- | --- |
+| Sponsored account creation, zero-HBAR controller | VERIFIED_TESTNET | 1, 2 |
+| HTS payment, SaucerSwap swap-to-pay, HIP-904 airdrop | VERIFIED_TESTNET | 3, 4, 5 |
+| x402 exact / transferExecutor (settle, replay, tampering) | VERIFIED_TESTNET | 6 |
+| MCP agent against the deployed app | VERIFIED_TESTNET | 7 |
+| Supra-priced session caps + red team | VERIFIED_TESTNET | 8 |
+| Raw-call bypass (relayer + on-chain + HCS) | VERIFIED_TESTNET | 9 |
+| HSS recurring payments | VERIFIED_TESTNET | 10 |
+| Savings vault | VERIFIED_TESTNET | 11 |
+| Token launchpad | VERIFIED_TESTNET | 12 |
+| Guardian recovery | VERIFIED_LOCAL | Foundry `RecoveryTest` |
 
 ## Live deployments (testnet)
 
 | Item | ID |
 | --- | --- |
-| ConsumerAccountFactory | 0.0.10841522 (`0xa5659e0f3bd8812a86f20e41cfdc1ce301d1c69a`) |
+| ConsumerAccountFactory | 0.0.10848625 (`0x6a882cd5a6f13960eefcd1290282e550eef81aae`) |
+| SupraPriceOracle | 0.0.10844780 |
+| SavingsVault (WHBAR) | 0.0.10848627 |
+| TokenLaunchpad | 0.0.10848836 |
 | HCS audit topic | 0.0.10841526 |
-| Sponsor | 0.0.10841387 |
-| Merchant | 0.0.10841388 |
-| Unassociated recipient | 0.0.10841389 |
+| Sponsor / merchant / unassociated | 0.0.10841387 / 0.0.10841388 / 0.0.10841389 |
+| App | https://hbar.38-49-209-149.sslip.io (systemd `scaffold-hbar-consumer`, Caddy) |
 
-## Fixes found by the testnet run
+## Findings from testnet (fixed or documented; see `docs/HEDERA_GOTCHAS.md`)
 
-- Factory deploy needs ~4.55M gas (embeds ConsumerAccount creation code): bootstrap now estimates.
-- viem's EIP-1559 fee estimate fell below the relay minimum: chain definition now quotes `eth_gasPrice`.
-- HIP-904 airdrops: `eth_estimateGas` does not model the pending-airdrop charge; relayer uses a 1.5M gas floor.
-- New accounts need a few seconds to index on Mirror Node before association checks.
+- Factory deploy needs ~5.6M gas; bootstrap estimates.
+- viem's EIP-1559 fee estimate fell below the relay minimum; the chain definition quotes `eth_gasPrice`.
+- `eth_estimateGas` misses HTS fees charged as gas (airdrops, association): airdrop gas floor + `minGas` on intents.
+- HBAR from a contract to an aliased account's long-zero address fails; recipients resolve to the alias.
+- `block.timestamp` lags consensus in scheduled calls; instalments are scheduled 10 s after due.
+- HSS `scheduleCall` costs a flat ~1.54M gas; scheduled instalments get 2M.
+- Contract-initiated HIP-904 airdrops are paid by the contract; launchpad claims fund their own fee.
+- Pyth Hermes now needs an API key; Supra push feeds are used.
 
-## Blockers
+## Known limitations
 
-1. U7 oracle, U9/U10 x402 transferExecutor support (owner decision).
-
-## Next concrete task
-
-Owner decisions on U7 (oracle) and U9/U10 (x402); optional HSS recurring payments.
+See README "Limitations" and `SECURITY.md` (airdrop fees outside session caps; factory size margin).

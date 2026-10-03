@@ -12,11 +12,14 @@
 | 12 | Recovery needs threshold + timelock | `_approveRecovery`, `executeRecovery` | `test_belowThresholdCannotExecute`, `test_thresholdThenTimelockThenExecute` |
 | 13 | Owner can cancel recovery | `cancelRecovery` | `test_ownerCancelsPendingRecovery` |
 | 14 | Unpriceable session spend fails closed | `_chargeSession` | `test_unpriceableSpendFailsClosed`, `test_noOracleFailsClosed` |
-| 15 | Agent cannot withdraw vault assets | reserved withdrawal IDs | `test_withdrawForbidden` (vault recipe not built yet) |
+| 15 | Agent cannot withdraw vault assets | reserved withdrawal IDs + `isVaultShare` blocks share transfers in `_chargeSession` | `test_withdrawForbidden`, `test_sessionCannotWithdrawOrRedeem`, `test_sessionCannotPayOutVaultShares`, `test_sessionCannotMoveVaultSharesThroughX402`, `test_sharesStayLockedForSessionsAfterVaultIsDelisted`; testnet flow 11 |
 | 16 | x402 authorization cannot be redirected | EIP-712 binds from/asset/to/amount/nonce/expiry | `test_cannotRedirectRecipientAssetOrAmount` |
 | 17 | Swap-to-pay cannot under-deliver | balance-delta check | `test_underdeliveryCannotReportSuccess`, `test_overspendRejected` |
 | 18 | HTS response codes checked | `associateToken`, `_airdrop`, raw 0x167 forbidden | `test_associateTokenChecksResponseCode`, `test_airdropActionCallsHtsAndChecksCode`, `test_rawHtsCallMustUseTypedHelper` |
-| 19 | Launchpad graduation idempotent | — | not built |
+| 19 | Launchpad graduation idempotent | `graduated` set before the HBAR transfer, `nonReentrant` | `test_graduateOnlyAfterTargetAndExactlyOnce`, `test_reentrantCreatorIsPaidOnce`; testnet flow 12 (second call `AlreadyGraduated`) |
+| 21 | Recurring payments pay only the owner-configured instalment, once due | owner-only create/cancel; `executeSubscription` checks due time and remaining count | `SubscriptionsTest`; testnet flow 10 |
+| 22 | Launchpad claim fees never use other launches' HBAR | balance-delta check, revert `InsufficientFeePayment` | `test_claimRefundsUnspentFeeAndFailsWithoutFeeFunds` |
+| 23 | Oracle fails closed (stale / future / zero / unsupported / reverting) and rounds up | `SupraPriceOracle.quoteUsd6` | `SupraPriceOracleTest` incl. `testFuzz_quoteNeverUndershoots` |
 | 20 | No server secret in browser bundle | env split: no secret uses `NEXT_PUBLIC_` | CI secret scan (pending) |
 
 Reviewed static-analysis exclusions are listed in `packages/foundry/foundry.toml` with reasons.

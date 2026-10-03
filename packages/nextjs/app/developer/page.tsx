@@ -6,19 +6,20 @@ import type { NextPage } from "next";
 
 /** Feature status as tracked in docs/BUILD_STATE.md. Update both together. */
 const FEATURES: [string, string][] = [
-  ["ConsumerAccount + factory", "VERIFIED_LOCAL"],
-  ["Sponsored execution (zero-HBAR controller)", "VERIFIED_LOCAL"],
-  ["Payments + signed payment requests (QR/link)", "VERIFIED_LOCAL"],
-  ["HIP-904 airdrop action", "VERIFIED_LOCAL"],
-  ["SaucerSwap swap-to-pay", "VERIFIED_LOCAL"],
-  ["Session policy + red-team denials", "VERIFIED_LOCAL"],
-  ["HCS policy audit", "VERIFIED_LOCAL"],
+  ["ConsumerAccount + factory (Sourcify exact_match)", "VERIFIED_TESTNET"],
+  ["Sponsored execution (zero-HBAR controller)", "VERIFIED_TESTNET"],
+  ["Payments + signed payment requests (QR/link)", "VERIFIED_TESTNET"],
+  ["HIP-904 airdrop action", "VERIFIED_TESTNET"],
+  ["SaucerSwap swap-to-pay", "VERIFIED_TESTNET"],
+  ["Session policy + red-team denials", "VERIFIED_TESTNET"],
+  ["Supra USD oracle for session caps", "VERIFIED_TESTNET"],
+  ["HCS policy audit", "VERIFIED_TESTNET"],
+  ["x402 exact / transferExecutor (facilitator + client)", "VERIFIED_TESTNET"],
+  ["MCP server for AI agents", "VERIFIED_TESTNET"],
+  ["HSS recurring payments (HIP-1215)", "VERIFIED_TESTNET"],
+  ["Savings vault (agents deposit, never withdraw)", "VERIFIED_TESTNET"],
+  ["Token launchpad (one-time graduation)", "VERIFIED_TESTNET"],
   ["Guardian recovery", "VERIFIED_LOCAL"],
-  ["x402 transferExecutor (contract side)", "VERIFIED_LOCAL"],
-  ["x402 facilitator support for transferExecutor", "BLOCKED_EXTERNAL"],
-  ["USD price oracle for session caps", "BLOCKED_EXTERNAL"],
-  ["HSS recurring payments", "EXPERIMENTAL"],
-  ["Vault / launchpad recipes", "EXPERIMENTAL"],
 ];
 
 const badge = (s: string) =>
@@ -67,7 +68,22 @@ const DeveloperPage: NextPage = () => {
                 SaucerSwap V2 router {d.saucerswap.router}, quoter {d.saucerswap.quoter}
               </div>
             ) : null}
-            <div>Oracle: {d.oracle ? d.oracle.label : "none (session spend fails closed)"}</div>
+            <div>
+              Oracle:{" "}
+              {d.oracle
+                ? `${d.oracle.contractId ?? d.oracle.address} — ${d.oracle.label}`
+                : "none (session spend fails closed)"}
+            </div>
+            {d.vaults?.WHBAR ? (
+              <div>Savings vault (WHBAR): {d.vaults.WHBAR.contractId ?? d.vaults.WHBAR.address}</div>
+            ) : null}
+            {d.launchpad ? <div>Token launchpad: {d.launchpad.contractId ?? d.launchpad.address}</div> : null}
+            <div>
+              x402: <code>/api/x402/premium</code> (paid resource), <code>/api/x402/facilitator/supported</code>
+            </div>
+            <div>
+              MCP: <code>yarn mcp:start</code> with CONSUMER_ACCOUNT, AGENT_PRIVATE_KEY, CONSUMER_APP_URL
+            </div>
           </>
         ) : (
           <div>
