@@ -1,9 +1,9 @@
 {
   "network": "testnet",
   "chainId": 296,
-  "updatedAt": "2026-10-03T16:53:58.438Z",
-  "factory": "0x713de8fa799ce7b7cf3182d6d58b31f31ea15726",
-  "factoryContractId": "0.0.10844783",
+  "updatedAt": "2026-10-03T17:56:12.842Z",
+  "factory": "0xf7206137ddb698e6c9e0ea91206e705acab9ceae",
+  "factoryContractId": "0.0.10845379",
   "auditTopicId": "0.0.10841526",
   "tokens": {
     "USDC": {
@@ -35,5 +35,6 @@
     "kind": "supra-push",
     "label": "Supra push feed 0x6Cd59830AAD978446e6cc7f6cc173aF7656Fb917: HBAR→HBAR_USD(432), WHBAR→HBAR_USD(432), USDC→USDC_USD(89); max age 7200s",
     "contractId": "0.0.10844780"
-  }
+  },
+  "factoryCodeHash": "0x316b6c91d4de25180b336d8f46a3e324fbd9e3cc9b7e8a1e0db375a9f1e7f849"
 }
