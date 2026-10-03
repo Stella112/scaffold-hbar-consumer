@@ -17,7 +17,9 @@ const SCENARIOS = [
   { id: "x402", label: "Buy data via x402", expect: "402 → signed payment → 200 + settlement" },
   { id: "overspend", label: "Spend 1000× more", expect: "PER_CALL_CAP_EXCEEDED / PRICE_UNAVAILABLE" },
   { id: "other-recipient", label: "Pay itself", expect: "RECIPIENT_NOT_ALLOWED" },
+  { id: "save", label: "Save for me", expect: "allowed: vault-deposit within limits" },
   { id: "withdraw", label: "Withdraw savings", expect: "WITHDRAW_FORBIDDEN" },
+  { id: "steal-shares", label: "Move savings shares", expect: "WITHDRAW_FORBIDDEN" },
   { id: "escalate", label: "Make itself owner", expect: "PRIVILEGE_ESCALATION" },
   { id: "raw-call", label: "Arbitrary call", expect: "RAW_CALL_FORBIDDEN" },
 ] as const;
@@ -109,7 +111,7 @@ const AgentPage: NextPage = () => {
                             expiresAt: BigInt(Math.floor(Date.now() / 1000) + Math.max(1, Number(hours)) * 3600),
                             perCallCapUsd6: parseUnits(perCall, 6),
                             dailyCapUsd6: parseUnits(daily, 6),
-                            allowedActions: [ACTION_IDS.payment, ACTION_IDS.x402Payment],
+                            allowedActions: [ACTION_IDS.payment, ACTION_IDS.x402Payment, ACTION_IDS.vaultDeposit],
                             allowedRecipients: isAddress(recipient) ? [getAddress(recipient)] : [],
                           }),
                         ]);

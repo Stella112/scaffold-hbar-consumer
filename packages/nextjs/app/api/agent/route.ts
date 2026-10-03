@@ -11,11 +11,13 @@ import {
   buildOwnerIntent,
   buildSessionAction,
   encodePayment,
+  encodeVaultDeposit,
   hashscanTx,
   receiptToJson,
   resolveX402PayTo,
   signOwnerIntent,
   signSessionAction,
+  testnetDeployment,
   toSponsorRequest,
   x402HbarSpendControls,
 } from "@sh/sdk";
@@ -51,7 +53,17 @@ export async function GET() {
   return NextResponse.json({ configured: Boolean(a), address: a?.address ?? null, kind: "Scripted demo agent" });
 }
 
-const SCENARIOS = ["pay", "x402", "overspend", "withdraw", "escalate", "raw-call", "other-recipient"] as const;
+const SCENARIOS = [
+  "pay",
+  "x402",
+  "save",
+  "steal-shares",
+  "overspend",
+  "withdraw",
+  "escalate",
+  "raw-call",
+  "other-recipient",
+] as const;
 type Scenario = (typeof SCENARIOS)[number];
 
 export async function POST(req: Request) {
@@ -98,6 +110,17 @@ export async function POST(req: Request) {
     case "withdraw":
       result = await action(RESERVED_ACTION_IDS.vaultWithdraw, "0x");
       break;
+    case "save":
+    case "steal-shares": {
+      const vault = testnetDeployment.vaults?.WHBAR?.address;
+      if (!vault) return NextResponse.json({ error: "NO_VAULT_IN_DEPLOYMENT" }, { status: 503 });
+      // save: 0.1 WHBAR into savings; steal-shares: try to pay the vault shares out as if they were a token.
+      result =
+        body.scenario === "save"
+          ? await action(ACTION_IDS.vaultDeposit, encodeVaultDeposit({ vault, assets: 10_000_000n }))
+          : await action(ACTION_IDS.payment, encodePayment({ asset: vault, to: agent.address, amount: 1n }));
+      break;
+    }
     case "escalate":
       result = await action(RESERVED_ACTION_IDS.adminSetOwner, "0x");
       break;

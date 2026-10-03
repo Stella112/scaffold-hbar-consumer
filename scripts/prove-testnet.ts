@@ -723,7 +723,9 @@ await flow(12, "Token launchpad: HTS token launch, purchase, one-time graduation
   const g: Evidence = { ...b, step: "Graduation pays the creator exactly once", input: `graduate(${id}) twice`, expected: "creator +1 HBAR once; second graduate reverts AlreadyGraduated", transactionHash: gradHash, mirrorQuery: resultQuery(gradHash), actual: `first status=${gradRcpt.status}, creator delta=${creatorGain}; second: ${second}`, status: gradRcpt.status === "success" && creatorGain === 100_000_000n && /AlreadyGraduated/.test(second) ? "PASS" : "FAIL", timestamp: now() };
   out.push(g);
 
-  const claimHash = await operatorWallet.writeContract({ address: pad.address, abi: padAbi, functionName: "claim", args: [id], chain: operatorWallet.chain, account: operatorWallet.account! });
+  // Contract-initiated airdrops are paid from the launchpad's balance, so the claimer funds the fee (refunded if unspent).
+  // eth_estimateGas cannot model HIP-904 fees, so the gas limit is explicit.
+  const claimHash = await operatorWallet.writeContract({ address: pad.address, abi: padAbi, functionName: "claim", args: [id], value: tinybarsToWeibars(200_000_000n), gas: 1_500_000n, chain: operatorWallet.chain, account: operatorWallet.account! });
   const claimRcpt = await pc.waitForTransactionReceipt({ hash: claimHash });
   await new Promise(r => setTimeout(r, 6000));
   const opBal = await M.getTokenBalance(op.HEDERA_OPERATOR_ID, tokenId);
@@ -733,7 +735,7 @@ await flow(12, "Token launchpad: HTS token launch, purchase, one-time graduation
 
   const creatorClaim = await ownerSend([
     selfCall.associateToken(account, info.token),
-    { target: pad.address, value: 0n, data: encodeFunctionData({ abi: padAbi, functionName: "claim", args: [id] }) },
+    { target: pad.address, value: 200_000_000n, data: encodeFunctionData({ abi: padAbi, functionName: "claim", args: [id] }) },
   ]);
   const accountTokens = await balanceOf(info.token, account);
   const cc = fromReceipt(12, "Creator associates and claims unsold + retained supply", creatorClaim, {

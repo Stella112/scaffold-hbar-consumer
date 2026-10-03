@@ -38,3 +38,11 @@ Measured on testnet with `eth_estimateGas`: `scheduleCall` costs a flat ~1.54M g
 scheduled (50k–2M all estimate 1.54M). A scheduled execution that reschedules itself therefore needs ~2M gas; with
 400k the inner `scheduleCall` ran out of gas (`SubscriptionScheduleFailed(-1)`). The payment itself still
 succeeded because rescheduling never blocks it.
+
+## Contract-initiated HIP-904 airdrops are paid by the contract
+
+When a contract calls `airdropTokens`, the child `TOKENAIRDROP` record's fee (~0.98 HBAR on testnet for a pending
+airdrop) is charged to **the calling contract's own HBAR**, not to the transaction submitter (observed in prove flow
+5: the ConsumerAccount was debited, the sponsor only paid gas). A contract with no HBAR gets
+`INSUFFICIENT_PAYER_BALANCE` (10). `TokenLaunchpad.claim` is therefore payable: the claimer funds the fee and gets
+the unspent part back, and the claim reverts if the fee would exceed what was sent.

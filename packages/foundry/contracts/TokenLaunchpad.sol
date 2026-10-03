@@ -76,6 +76,7 @@ contract TokenLaunchpad is ReentrancyGuard {
     error NothingToClaim();
     error HtsCallFailed(int64 responseCode);
     error NativeTransferFailed();
+    error InsufficientFeePayment(uint256 feeSpent);
 
     /// @notice Creates the token and opens its sale. Send enough HBAR to cover the HTS token-creation fee; any
     ///         unspent part is returned to the creator.
@@ -155,7 +156,10 @@ contract TokenLaunchpad is ReentrancyGuard {
 
     /// @notice After graduation: buyers receive what they bought; the creator receives the unsold and retained supply.
     ///         Delivered by HIP-904 airdrop, so unassociated accounts get a claimable pending airdrop.
-    function claim(uint256 id) external nonReentrant {
+    /// @dev Hedera charges a contract-initiated airdrop's fee (incl. the pending-airdrop charge, ~1 HBAR on testnet)
+    ///      to the calling contract's own balance. The claimer funds it with msg.value; the unspent part is refunded,
+    ///      and the claim reverts rather than let the fee touch HBAR held for other launches.
+    function claim(uint256 id) external payable nonReentrant {
         Launch storage l = _launch(id);
         if (!l.graduated) revert NotGraduated();
         uint64 amount = bought[id][msg.sender];
@@ -165,8 +169,12 @@ contract TokenLaunchpad is ReentrancyGuard {
             amount += l.supply - l.sold;
         }
         if (amount == 0) revert NothingToClaim();
+        uint256 balanceBefore = address(this).balance;
         _airdrop(l.token, msg.sender, amount);
+        uint256 feeSpent = balanceBefore - address(this).balance;
+        if (feeSpent > msg.value) revert InsufficientFeePayment(feeSpent);
         emit Claimed(id, msg.sender, amount);
+        if (msg.value > feeSpent) _sendHbar(msg.sender, msg.value - feeSpent);
     }
 
     /// @notice After a missed deadline: buyers get their HBAR back once. The creator may then reclaim the supply.

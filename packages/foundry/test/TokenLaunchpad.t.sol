@@ -209,6 +209,22 @@ contract TokenLaunchpadTest is Test {
         pad.claim(0);
     }
 
+    function test_claimRefundsUnspentFeeAndFailsWithoutFeeFunds() public {
+        _launch();
+        _buy(alice, 100_00);
+        pad.graduate(0);
+        hts.setAirdropFeeRequired(1e8); // the launchpad must hold 1 HBAR when it airdrops
+        vm.prank(alice);
+        vm.expectRevert(abi.encodeWithSelector(TokenLaunchpad.HtsCallFailed.selector, int64(10)));
+        pad.claim(0); // no fee sent and the launchpad holds nothing
+
+        uint256 before = alice.balance;
+        vm.prank(alice);
+        pad.claim{ value: 2e8 }(0);
+        assertEq(before - alice.balance, 0); // mock spends nothing, so all 2 HBAR comes back
+        assertEq(address(pad).balance, 0);
+    }
+
     function test_refundsWhenDeadlinePassesBelowTarget() public {
         _launch();
         _buy(alice, 50_00); // 0.5 HBAR, target missed

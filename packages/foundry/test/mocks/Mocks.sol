@@ -69,12 +69,20 @@ contract MockHederaTokenService {
     }
 
     function airdropTokens(IHederaTokenService.TokenTransferList[] memory lists) external returns (int64) {
+        // Hedera charges the calling contract's balance; reject like INSUFFICIENT_PAYER_BALANCE (10) when it can't pay.
+        if (msg.sender.balance < airdropFeeRequired) return 10;
         airdropCalls++;
         lastToken = lists[0].token;
         lastSender = lists[0].transfers[0].accountID;
         lastReceiver = lists[0].transfers[1].accountID;
         lastAmount = lists[0].transfers[1].amount;
         return responseCode;
+    }
+
+    uint256 public airdropFeeRequired;
+
+    function setAirdropFeeRequired(uint256 fee) external {
+        airdropFeeRequired = fee;
     }
 
     // ---- token creation (fee: keeps CREATE_FEE tinybars, returns any excess like a refund)

@@ -215,9 +215,10 @@ async function main() {
       const v = await deploy("SavingsVault", savingsVaultAbi, savingsVaultBytecode, [whbar, "Savings WHBAR", "svWHBAR"]);
       deployment.vaults = { ...deployment.vaults, WHBAR: { address: v.address, contractId: v.contractId, asset: whbar } };
     }
-    if (!deployment.launchpad) {
+    const launchpadHash = keccak256(tokenLaunchpadBytecode);
+    if (!deployment.launchpad || deployment.launchpad.codeHash !== launchpadHash) {
       const l = await deploy("TokenLaunchpad", tokenLaunchpadAbi, tokenLaunchpadBytecode, []);
-      deployment.launchpad = { address: l.address, contractId: l.contractId };
+      deployment.launchpad = { address: l.address, contractId: l.contractId, codeHash: launchpadHash };
     }
 
     // HCS audit topic: only the sponsor key can submit.

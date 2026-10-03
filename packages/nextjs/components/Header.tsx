@@ -19,6 +19,8 @@ export const menuLinks: HeaderMenuLink[] = [
   { label: "Pay", href: "/pay" },
   { label: "Request", href: "/request" },
   { label: "Recurring", href: "/recurring" },
+  { label: "Save", href: "/save" },
+  { label: "Launch", href: "/launch" },
   { label: "Activity", href: "/activity" },
   { label: "Agent", href: "/agent" },
   { label: "Sponsor", href: "/sponsor" },

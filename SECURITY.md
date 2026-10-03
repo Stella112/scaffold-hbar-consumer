@@ -49,6 +49,15 @@ Session spend is priced in USD (6 decimals) through `IPriceOracle`. No oracle, a
 - Swap-to-pay checks the recipient's balance increased by at least `amountOut` and that no more than `amountInMaximum` was spent; the router approval is reset to zero afterwards.
 - HSS scheduled payments are not implemented in this version.
 
+## Known limitation: airdrop fees are outside session caps
+
+A session's USD caps price the *tokens* an action moves. A HIP-904 `airdrop` action also makes the account pay the
+airdrop fee from its own HBAR (~1 HBAR per pending airdrop on testnet; see `docs/HEDERA_GOTCHAS.md`), and that fee is
+not charged against the caps. A session holding the `airdrop` action could therefore spend the account's HBAR on
+fees beyond its limits. The app never grants `airdrop` to agents (Agent page grants `payment`, `x402-payment` and
+`vault-deposit`); do not grant it to sessions you do not trust. Closing this on-chain (pricing the fee into the cap)
+needs an account change that does not fit the current factory size margin; see `docs/DECISIONS.md`.
+
 ## Secrets
 
 Private keys live only in `.env` (gitignored) or server environment variables. No secret uses a `NEXT_PUBLIC_` name. The browser controller key used by the demo app is stored in `localStorage` — a testnet convenience, not production custody.

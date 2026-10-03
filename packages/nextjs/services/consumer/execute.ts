@@ -10,6 +10,7 @@ import {
   consumerAccountAbi,
   encodePayment,
   encodeSwapToPay,
+  encodeVaultDeposit,
   exactOutputPath,
   longZeroToEntityId,
   selfCall,
@@ -17,8 +18,9 @@ import {
   signSessionAction,
   testnetDeployment,
   toSponsorRequest,
+  tokenLaunchpadAbi,
 } from "@sh/sdk";
-import { type Address, type LocalAccount, parseAbi } from "viem";
+import { type Address, type LocalAccount, encodeFunctionData, parseAbi } from "viem";
 
 const chainId = HEDERA_TESTNET.chainId;
 const mirror = new MirrorClient({ baseUrl: process.env.NEXT_PUBLIC_MIRROR_NODE_URL || HEDERA_TESTNET.mirrorUrl });
@@ -117,4 +119,133 @@ export async function swapToPay(
       path: exactOutputPath([p.tokenOut, p.tokenIn], [SWAP_FEE]),
     }),
   );
+}
+
+// ------------------------------------------------------------------ savings vault + launchpad recipes
+
+const vaultAbi = parseAbi([
+  "function redeem(uint256 shares, address receiver, address owner) returns (uint256)",
+  "function balanceOf(address) view returns (uint256)",
+  "function convertToAssets(uint256 shares) view returns (uint256)",
+]);
+const erc20BalanceAbi = parseAbi(["function balanceOf(address) view returns (uint256)"]);
+
+/** WHBAR.deposit(): wraps HBAR held by the account (associating WHBAR first if needed). */
+export async function wrapHbar(controller: LocalAccount, account: Address, tinybars: bigint) {
+  const ss = testnetDeployment.saucerswap!;
+  const whbar = testnetDeployment.tokens!.WHBAR!;
+  const calls: Call[] = [];
+  if (!(await mirror.isAssociated(account, whbar.tokenId).catch(() => false))) {
+    calls.push(selfCall.associateToken(account, whbar.address));
+  }
+  calls.push({ target: ss.whbar, value: tinybars, data: "0xd0e30db0" });
+  return ownerCalls(controller, account, calls);
+}
+
+/** Typed vault-deposit (allowlisting the vault first). Shares are always minted to the account itself. */
+export async function vaultDeposit(controller: LocalAccount, account: Address, vault: Address, assets: bigint) {
+  const allowed = await publicClient.readContract({
+    address: account,
+    abi: consumerAccountAbi,
+    functionName: "vaultAllowed",
+    args: [vault],
+  });
+  if (!allowed) {
+    const r = await ownerCalls(controller, account, [selfCall.setVault(account, vault, true)]);
+    if (!("receipt" in r) || r.receipt.status !== "success") return r;
+  }
+  return typedAction(controller, account, ACTION_IDS.vaultDeposit, encodeVaultDeposit({ vault, assets }));
+}
+
+/** Owner-only: redeem shares back to the account. Sessions can never do this. */
+export const vaultRedeem = (controller: LocalAccount, account: Address, vault: Address, shares: bigint) =>
+  ownerCalls(controller, account, [
+    {
+      target: vault,
+      value: 0n,
+      data: encodeFunctionData({ abi: vaultAbi, functionName: "redeem", args: [shares, account, account] }),
+    },
+  ]);
+
+export async function vaultPosition(account: Address, vault: Address, asset: Address) {
+  const [shares, liquid] = await Promise.all([
+    publicClient.readContract({ address: vault, abi: vaultAbi, functionName: "balanceOf", args: [account] }),
+    publicClient.readContract({ address: asset, abi: erc20BalanceAbi, functionName: "balanceOf", args: [account] }),
+  ]);
+  const saved = shares
+    ? await publicClient.readContract({
+        address: vault,
+        abi: vaultAbi,
+        functionName: "convertToAssets",
+        args: [shares],
+      })
+    : 0n;
+  return { shares, saved, liquid };
+}
+
+/** Launch a token from the account; `feeTinybars` covers the HTS creation fee (unspent part is refunded). */
+export const launchToken = (
+  controller: LocalAccount,
+  account: Address,
+  params: {
+    name: string;
+    symbol: string;
+    decimals: number;
+    supply: bigint;
+    forSale: bigint;
+    priceTinybars: bigint;
+    target: bigint;
+    duration: bigint;
+  },
+  feeTinybars: bigint,
+) =>
+  ownerCalls(controller, account, [
+    {
+      target: testnetDeployment.launchpad!.address,
+      value: feeTinybars,
+      data: encodeFunctionData({ abi: tokenLaunchpadAbi, functionName: "launch", args: [params] }),
+    },
+  ]);
+
+/** Buy from a launch with the account's HBAR (exact quoted price). */
+export async function launchBuy(controller: LocalAccount, account: Address, id: bigint, amount: bigint) {
+  const pad = testnetDeployment.launchpad!.address;
+  const cost = await publicClient.readContract({
+    address: pad,
+    abi: tokenLaunchpadAbi,
+    functionName: "quote",
+    args: [id, amount],
+  });
+  return ownerCalls(controller, account, [
+    {
+      target: pad,
+      value: cost,
+      data: encodeFunctionData({ abi: tokenLaunchpadAbi, functionName: "buy", args: [id, amount] }),
+    },
+  ]);
+}
+
+/** HBAR sent with a launchpad claim to cover its airdrop fee (~1 HBAR for a pending airdrop); unspent is refunded. */
+export const CLAIM_FEE_TINYBARS = 200_000_000n;
+
+/** Permissionless graduate, or claim (associating the token first, if needed, so it is delivered directly). */
+export async function launchCall(
+  controller: LocalAccount,
+  account: Address,
+  fn: "graduate" | "claim" | "refund",
+  id: bigint,
+  token?: Address,
+) {
+  const tokenId = token ? longZeroToEntityId(token) : null;
+  const needsAssociation =
+    fn === "claim" && token && tokenId && !(await mirror.isAssociated(account, tokenId).catch(() => false));
+  return ownerCalls(controller, account, [
+    ...(needsAssociation ? [selfCall.associateToken(account, token!)] : []),
+    {
+      target: testnetDeployment.launchpad!.address,
+      // A claim's HIP-904 airdrop fee is charged to the launchpad, so send some HBAR along; the rest comes back.
+      value: fn === "claim" ? CLAIM_FEE_TINYBARS : 0n,
+      data: encodeFunctionData({ abi: tokenLaunchpadAbi, functionName: fn, args: [id] }),
+    },
+  ]);
 }

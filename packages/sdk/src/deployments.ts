@@ -19,7 +19,7 @@ export type Deployment = {
   oracle?: { address: Address; kind: string; label: string; contractId?: string };
   /** ERC-4626 savings vaults by asset symbol. */
   vaults?: Record<string, { address: Address; contractId?: string; asset: Address }>;
-  launchpad?: { address: Address; contractId?: string };
+  launchpad?: { address: Address; contractId?: string; codeHash?: string };
 };
 
 export const testnetDeployment = testnet as Deployment;
