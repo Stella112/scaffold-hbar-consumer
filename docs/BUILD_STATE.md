@@ -21,7 +21,7 @@
 | M6 recovery + HSS | recovery VERIFIED_LOCAL; HSS not built | |
 | M7 vault / launchpad | not started | |
 | Next.js app (consumer UI) | DEPLOYED | https://hbar.38-49-209-149.sslip.io (systemd `scaffold-hbar-consumer`, Caddy) |
-| Fresh external scaffold gate | not run | `yarn check:scaffold` |
+| Fresh external scaffold gate | PASS | `npx create-scaffold-hbar@latest --template Stella112/scaffold-hbar-consumer` on Linux → install, typecheck, lint, test, build, boot, 9 routes 200 (`yarn check:scaffold`) |
 
 ## Live deployments (testnet)
 
@@ -46,4 +46,4 @@
 
 ## Next concrete task
 
-Fresh external scaffold gate (`yarn check:scaffold`).
+Owner decisions on U7 (oracle) and U9/U10 (x402); optional HSS recurring payments.
