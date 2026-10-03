@@ -18,4 +18,4 @@
 | D14 | 2026-10-03 | `vitest@3.2.7` (not 5.x). | vitest 5 requires Node ≥22.12; the template promises Node ≥20.18.3. |
 | D15 | 2026-10-03 | Dependencies: `viem@2.39.0` (same as template frontend), `zod@4.6.5` (wire/env schemas), `tsx@4.23.15` (run TS scripts), `dotenv@18.0.5` (load `.env` in scripts). | Each pinned to a version checked on npm 2026-10-03. |
 | D16 | 2026-10-03 | Demo swap pair WHBAR → USDC(0.0.5449) on the 0.30% pool; the account wraps HBAR via `WHBAR.deposit()`. | Live liquidity verified; avoids depending on faucet tokens. |
-| D17 | 2026-10-03 | Repository contains no assistant-specific files (no CLAUDE.md); agent guidance lives in AGENTS.md. | Owner requirement. |
+| D17 | 2026-10-03 | Agent guidance lives only in AGENTS.md; no tool-specific instruction files. | Owner requirement. |
