@@ -6,7 +6,7 @@
  * nothing is filled in by hand.
  */
 import { type Address, type Hex, parseAbi, zeroHash } from "viem";
-import { privateKeyToAccount } from "viem/accounts";
+import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import {
   ACTION_IDS,
   HBAR,
@@ -41,7 +41,8 @@ const ss = requireDeployment("saucerswap");
 const M = mirror();
 const pc = publicClient();
 const chainId = HEDERA_TESTNET.chainId;
-const controller = privateKeyToAccount(hex0x(roles.CONTROLLER_PRIVATE_KEY));
+// A fresh controller per run: proves a key with no Hedera account and no HBAR can create and operate an account.
+const controller = privateKeyToAccount(generatePrivateKey());
 const agent = privateKeyToAccount(hex0x(roles.AGENT_PRIVATE_KEY));
 const operatorWallet = walletFor(op.HEDERA_OPERATOR_KEY);
 const { sponsor, auditor } = createTestnetSponsor(loadRelayerConfig(process.env), ".data/prove");
@@ -109,7 +110,11 @@ async function flow(n: number, step: string, fn: () => Promise<Evidence | Eviden
       console.log(`  ${x.status}: ${x.actual}`);
     }
   } catch (err) {
-    const msg = (err as Error).message.split("\n")[0]!;
+    // viem errors keep the useful part (RPC URL, status, node message) in details, not the first line.
+    const e = err as Error & { shortMessage?: string; details?: string; status?: number };
+    const msg = [e.shortMessage ?? e.message.split("\n")[0], e.status && `HTTP ${e.status}`, e.details]
+      .filter(Boolean)
+      .join(" — ");
     entries.push({
       flow: n,
       step,
