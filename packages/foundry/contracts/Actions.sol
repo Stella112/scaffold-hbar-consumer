@@ -13,6 +13,9 @@ library Actions {
     bytes32 internal constant X402_PAYMENT = keccak256("consumer.action.x402-payment.v1");
     /// actionData = abi.encode(ConsumerAccount.SwapToPay); SaucerSwap V2 exact-output swap paid to a recipient
     bytes32 internal constant SWAP_TO_PAY = keccak256("consumer.action.swap-to-pay.v1");
+    /// actionData = abi.encode(address vault, uint256 assets); ERC-4626 deposit into an owner-allowlisted vault,
+    /// shares always minted to the account itself
+    bytes32 internal constant VAULT_DEPOSIT = keccak256("consumer.action.vault-deposit.v1");
 
     // Reserved privileged identifiers. A session presenting one of these is attempting escalation.
     bytes32 internal constant ADMIN_SET_OWNER = keccak256("consumer.admin.set-owner.v1");

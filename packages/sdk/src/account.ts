@@ -45,6 +45,12 @@ export const selfCall = {
     value: 0n,
     data: encodeFunctionData({ abi: consumerAccountAbi, functionName: "setSwapRouter", args: [router, allowed] }),
   }),
+  /** Lets sessions deposit into an ERC-4626 vault; its shares stay non-transferable for sessions forever. */
+  setVault: (account: Address, vault: Address, allowed: boolean): Call => ({
+    target: account,
+    value: 0n,
+    data: encodeFunctionData({ abi: consumerAccountAbi, functionName: "setVault", args: [vault, allowed] }),
+  }),
   setOracle: (account: Address, oracle: Address): Call => ({
     target: account,
     value: 0n,

@@ -28,6 +28,7 @@ import {
   consumerAccountFactoryAbi,
   decodeRevertData,
   decodeSwapToPay,
+  decodeVaultDeposit,
   decodeTransferAction,
   encodeCreateAccount,
   encodeExecuteOwnerIntent,
@@ -246,6 +247,9 @@ export class Sponsor {
     } else if (name === "swapToPay") {
       const s = decodeSwapToPay(action.actionData);
       summary = { asset: s.tokenIn, amount: s.amountOut, recipient: s.to, target: s.router };
+    } else if (name === "vaultDeposit") {
+      const v = decodeVaultDeposit(action.actionData);
+      summary = { asset: null, amount: v.assets, recipient: v.vault, target: v.vault };
     }
     const intentHash = hashTypedData({
       domain: consumerAccountDomain(this.d.chainId, account),

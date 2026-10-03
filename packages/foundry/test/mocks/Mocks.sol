@@ -76,6 +76,33 @@ contract MockHederaTokenService {
         lastAmount = lists[0].transfers[1].amount;
         return responseCode;
     }
+
+    // ---- token creation (fee: keeps CREATE_FEE tinybars, returns any excess like a refund)
+    uint256 public constant CREATE_FEE = 10e8;
+    uint256 public tokensCreated;
+    address public lastTreasury;
+    bool public lastFiniteSupply;
+    int64 public lastMaxSupply;
+    uint256 public lastKeyCount;
+    int64 public lastInitialSupply;
+
+    function createFungibleToken(IHederaTokenService.HederaToken memory token, int64 initialTotalSupply, int32)
+        external
+        payable
+        returns (int64, address)
+    {
+        if (responseCode != 22) return (responseCode, address(0));
+        require(msg.value >= CREATE_FEE, "INSUFFICIENT_TX_FEE");
+        tokensCreated++;
+        lastTreasury = token.treasury;
+        lastFiniteSupply = token.tokenSupplyType;
+        lastMaxSupply = token.maxSupply;
+        lastKeyCount = token.tokenKeys.length;
+        lastInitialSupply = initialTotalSupply;
+        (bool ok,) = msg.sender.call{ value: msg.value - CREATE_FEE }("");
+        require(ok, "refund failed");
+        return (22, address(uint160(0x70700 + tokensCreated)));
+    }
 }
 
 /// Test-only. Records whether it was called, to prove a call never happened.

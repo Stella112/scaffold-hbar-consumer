@@ -5,7 +5,7 @@
  * TESTNET_VERIFICATION.md from observed results only. A flow that fails is recorded as FAIL with the error;
  * nothing is filled in by hand.
  */
-import { type Address, type Hex, decodeEventLog, parseAbi, zeroHash } from "viem";
+import { type Address, type Hex, decodeEventLog, encodeFunctionData, parseAbi, zeroHash } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import {
   ACTION_IDS,
@@ -14,7 +14,9 @@ import {
   RESERVED_ACTION_IDS,
   type Receipt,
   ConsumerAccountReader,
+  encodeVaultDeposit,
   longZeroToEntityId,
+  tokenLaunchpadAbi,
   buildOwnerIntent,
   buildSessionAction,
   decodeRevertData,
@@ -597,6 +599,152 @@ await flow(10, "Recurring payment executed by the Hedera Schedule Service", asyn
   e.actual += `; remaining=${sub.remaining}; merchant delta=${delta}`;
   e.status = sub.remaining === 0 && delta === 2n * amount && executed.length >= 2 ? "PASS" : "FAIL";
   return e;
+});
+
+await flow(11, "Savings vault: agent deposits within caps, can never withdraw or move shares", async () => {
+  const vault = requireDeployment("vaults").WHBAR!.address;
+  const vaultAbi = parseAbi([
+    "function balanceOf(address) view returns (uint256)",
+    "function maxWithdraw(address) view returns (uint256)",
+    "function redeem(uint256 shares, address receiver, address owner) returns (uint256)",
+  ]);
+  const saver = privateKeyToAccount(generatePrivateKey());
+  const setup = await ownerSend([
+    selfCall.setVault(account, vault, true),
+    selfCall.grantSession(account, {
+      key: saver.address,
+      expiresAt: BigInt(Math.floor(Date.now() / 1000) + 3600),
+      perCallCapUsd6: 1_000_000n,
+      dailyCapUsd6: 3_000_000n,
+      allowedActions: [ACTION_IDS.vaultDeposit, ACTION_IDS.payment],
+      allowedRecipients: [],
+    }),
+  ]);
+  if (setup.status !== "success") throw new Error(`vault setup denied: ${setup.reasonCode}`);
+  const out: Evidence[] = [];
+
+  const whbarBefore = await balanceOf(WHBAR, account);
+  const dep = await actionSend(saver, ACTION_IDS.vaultDeposit, encodeVaultDeposit({ vault, assets: 50_000_000n }));
+  const shares = await pc.readContract({ address: vault, abi: vaultAbi, functionName: "balanceOf", args: [account] });
+  const d = fromReceipt(11, "Agent deposits 0.5 WHBAR into the savings vault", dep, {
+    asset: "WHBAR",
+    contract: requireDeployment("vaults").WHBAR!.contractId ?? vault,
+    input: "session action vault-deposit { vault: Savings WHBAR, assets: 0.5 WHBAR } (≈ $0.05, cap $1)",
+    expected: "success; shares minted to the account; WHBAR -0.5",
+  });
+  const spent = whbarBefore - (await balanceOf(WHBAR, account));
+  d.actual += `; account WHBAR delta=-${spent}; vault shares=${shares}`;
+  if (dep.status === "success" && (spent !== 50_000_000n || shares === 0n)) d.status = "FAIL";
+  out.push(d);
+
+  for (const [label, id, data, expected] of [
+    ["pay vault shares to itself", ACTION_IDS.payment, encodePayment({ asset: vault, to: saver.address, amount: shares }), "WITHDRAW_FORBIDDEN"],
+    ["withdraw from the vault", RESERVED_ACTION_IDS.vaultWithdraw, encodeVaultDeposit({ vault, assets: 1n }), "WITHDRAW_FORBIDDEN"],
+  ] as [string, Hex, Hex, string][]) {
+    const r = await actionSend(saver, id, data);
+    const e = fromReceipt(11, `Agent attack: ${label}`, r, { input: `session action ${label}`, expected: `denied ${expected}` });
+    e.status = r.status === "denied" && r.reasonCode === expected && r.hcsAudit ? "PASS" : "FAIL";
+    out.push(e);
+  }
+
+  const before = await balanceOf(WHBAR, account);
+  const redeem = await ownerSend([
+    { target: vault, value: 0n, data: encodeFunctionData({ abi: vaultAbi, functionName: "redeem", args: [shares, account, account] }) },
+  ]);
+  const back = (await balanceOf(WHBAR, account)) - before;
+  const o = fromReceipt(11, "Owner redeems all shares", redeem, {
+    asset: "WHBAR",
+    input: `owner intent vault.redeem(${shares} shares)`,
+    expected: "success; 0.5 WHBAR back to the account",
+  });
+  o.actual += `; account WHBAR delta=+${back}`;
+  if (redeem.status === "success" && back !== 50_000_000n) o.status = "FAIL";
+  out.push(o);
+  return out;
+});
+
+await flow(12, "Token launchpad: HTS token launch, purchase, one-time graduation, airdropped claims", async () => {
+  const pad = requireDeployment("launchpad");
+  const padAbi = tokenLaunchpadAbi;
+  // The account pays the HTS token-creation fee from its own HBAR; unspent fee comes back.
+  const fund = await operatorWallet.sendTransaction({ to: account, value: tinybarsToWeibars(4_000_000_000n) });
+  await pc.waitForTransactionReceipt({ hash: fund });
+  const params = {
+    name: "Scaffold Demo",
+    symbol: "SDEMO",
+    decimals: 2,
+    supply: 1_000_000_00n,
+    forSale: 600_000_00n,
+    priceTinybars: 1_000_000n, // 0.01 HBAR per token
+    target: 100_000_000n, // graduate at 1 HBAR
+    duration: 3600n,
+  };
+  const out: Evidence[] = [];
+  const accountHbar0 = (await M.getHbarBalance(account)).tinybars;
+  const launch = await ownerSend([
+    { target: pad.address, value: 3_000_000_000n, data: encodeFunctionData({ abi: padAbi, functionName: "launch", args: [params] }) },
+  ]);
+  const id = (await pc.readContract({ address: pad.address, abi: padAbi, functionName: "launchCount" })) - 1n;
+  const info = await pc.readContract({ address: pad.address, abi: padAbi, functionName: "launches", args: [id] });
+  const tokenId = longZeroToEntityId(info.token) ?? info.token;
+  await new Promise(r => setTimeout(r, 6000));
+  const token = await M.get<{ supply_type: string; max_supply: string; total_supply: string; admin_key: unknown; supply_key: unknown; freeze_key: unknown; treasury_account_id: string; name: string }>(`/tokens/${tokenId}`);
+  const feeSpent = accountHbar0 - (await M.getHbarBalance(account)).tinybars;
+  const l = fromReceipt(12, "Account launches an immutable fixed-supply HTS token", launch, {
+    asset: "HBAR",
+    contract: pad.contractId ?? pad.address,
+    input: "owner intent launchpad.launch{30 HBAR} SDEMO: 1,000,000 supply, 600,000 for sale at 0.01 HBAR, target 1 HBAR",
+    expected: "token created by HTS with no admin/supply/freeze keys, FINITE supply, launchpad treasury; unspent fee refunded",
+  });
+  l.mirrorQuery = `${HEDERA_TESTNET.mirrorUrl}/tokens/${tokenId}`;
+  l.mirrorResult = `${token.name} ${tokenId}: ${token.supply_type} max ${token.max_supply} total ${token.total_supply}, treasury ${token.treasury_account_id}, admin_key ${token.admin_key ? "set" : "none"}, supply_key ${token.supply_key ? "set" : "none"}, freeze_key ${token.freeze_key ? "set" : "none"}; account HBAR spent ${feeSpent} of 3000000000 sent`;
+  if (launch.status === "success" && (token.supply_type !== "FINITE" || token.admin_key || token.supply_key || token.freeze_key || feeSpent >= 3_000_000_000n)) l.status = "FAIL";
+  out.push(l);
+  if (launch.status !== "success") return out;
+
+  // Operator (an ordinary Hedera account) buys 100 tokens for exactly 1 HBAR, reaching the target.
+  const cost = await pc.readContract({ address: pad.address, abi: padAbi, functionName: "quote", args: [id, 100_00n] });
+  const buyHash = await operatorWallet.writeContract({ address: pad.address, abi: padAbi, functionName: "buy", args: [id, 100_00n], value: tinybarsToWeibars(cost), chain: operatorWallet.chain, account: operatorWallet.account! });
+  const buyRcpt = await pc.waitForTransactionReceipt({ hash: buyHash });
+  const b: Evidence = { ...l, step: "Operator buys 100 SDEMO for 1 HBAR", actor: `${op.HEDERA_OPERATOR_ID} (EOA buyer)`, input: `buy(${id}, 10000 units) value ${cost} tinybars`, expected: "success; raise reaches the 1 HBAR target", transactionHash: buyHash, transactionId: null, mirrorQuery: resultQuery(buyHash), mirrorResult: null, hcs: null, actual: `status=${buyRcpt.status}`, status: buyRcpt.status === "success" && cost === 100_000_000n ? "PASS" : "FAIL", timestamp: now() };
+  out.push(b);
+
+  const creatorBefore = (await M.getHbarBalance(account)).tinybars;
+  const gradHash = await operatorWallet.writeContract({ address: pad.address, abi: padAbi, functionName: "graduate", args: [id], chain: operatorWallet.chain, account: operatorWallet.account! });
+  const gradRcpt = await pc.waitForTransactionReceipt({ hash: gradHash });
+  await new Promise(r => setTimeout(r, 6000));
+  const creatorGain = (await M.getHbarBalance(account)).tinybars - creatorBefore;
+  let second = "no revert";
+  try {
+    await pc.simulateContract({ address: pad.address, abi: padAbi, functionName: "graduate", args: [id], account: operatorWallet.account! });
+  } catch (e) {
+    second = (e as { shortMessage?: string }).shortMessage ?? String(e);
+  }
+  const g: Evidence = { ...b, step: "Graduation pays the creator exactly once", input: `graduate(${id}) twice`, expected: "creator +1 HBAR once; second graduate reverts AlreadyGraduated", transactionHash: gradHash, mirrorQuery: resultQuery(gradHash), actual: `first status=${gradRcpt.status}, creator delta=${creatorGain}; second: ${second}`, status: gradRcpt.status === "success" && creatorGain === 100_000_000n && /AlreadyGraduated/.test(second) ? "PASS" : "FAIL", timestamp: now() };
+  out.push(g);
+
+  const claimHash = await operatorWallet.writeContract({ address: pad.address, abi: padAbi, functionName: "claim", args: [id], chain: operatorWallet.chain, account: operatorWallet.account! });
+  const claimRcpt = await pc.waitForTransactionReceipt({ hash: claimHash });
+  await new Promise(r => setTimeout(r, 6000));
+  const opBal = await M.getTokenBalance(op.HEDERA_OPERATOR_ID, tokenId);
+  const pending = (await M.getPendingAirdrops(op.HEDERA_OPERATOR_ID)).filter(a => a.token_id === tokenId);
+  const c: Evidence = { ...b, step: "Buyer claims via HIP-904 airdrop", input: `claim(${id})`, expected: "10000 units delivered or pending (claimable) for the buyer", transactionHash: claimHash, mirrorQuery: `${HEDERA_TESTNET.mirrorUrl}/accounts/${op.HEDERA_OPERATOR_ID}/airdrops/pending`, actual: `status=${claimRcpt.status}; balance=${opBal ?? 0}; pending=${pending.map(p => p.amount).join(",") || "none"}`, status: claimRcpt.status === "success" && (opBal === 10_000n || pending.some(p => p.amount === 10_000)) ? "PASS" : "FAIL", timestamp: now() };
+  out.push(c);
+
+  const creatorClaim = await ownerSend([
+    selfCall.associateToken(account, info.token),
+    { target: pad.address, value: 0n, data: encodeFunctionData({ abi: padAbi, functionName: "claim", args: [id] }) },
+  ]);
+  const accountTokens = await balanceOf(info.token, account);
+  const cc = fromReceipt(12, "Creator associates and claims unsold + retained supply", creatorClaim, {
+    asset: "SDEMO",
+    input: "owner intent [associateToken(SDEMO), launchpad.claim]",
+    expected: "account receives 999,900 SDEMO (99,990,000 smallest units: supply minus the 100 tokens sold)",
+  });
+  cc.actual += `; account SDEMO=${accountTokens}`;
+  if (creatorClaim.status === "success" && accountTokens !== 1_000_000_00n - 100_00n) cc.status = "FAIL";
+  out.push(cc);
+  return out;
 });
 
 const header = [

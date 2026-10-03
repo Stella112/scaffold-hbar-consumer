@@ -9,6 +9,7 @@ import { ReentrancyGuard } from "@openzeppelin/contracts/utils/ReentrancyGuard.s
 import { IHederaTokenService } from "./interfaces/IHederaTokenService.sol";
 import { IPriceOracle } from "./interfaces/IPriceOracle.sol";
 import { IHederaScheduleService } from "./interfaces/IHederaScheduleService.sol";
+import { IERC4626 } from "@openzeppelin/contracts/interfaces/IERC4626.sol";
 import { ITransferExecutor } from "./interfaces/ITransferExecutor.sol";
 import { Actions } from "./Actions.sol";
 import { ISaucerSwapV2Router } from "./interfaces/ISaucerSwapV2Router.sol";
@@ -156,6 +157,7 @@ contract ConsumerAccount is EIP712, ReentrancyGuard, ITransferExecutor {
     error SwapPathMismatch();
     error SwapUnderdelivered(uint256 delivered, uint256 requested);
     error SwapOverspent(uint256 amountIn, uint256 amountInMaximum);
+    error VaultDepositFailed();
     error SubscriptionInactive();
     error SubscriptionNotDue();
     error ScheduleFailed(int64 responseCode);
@@ -179,6 +181,8 @@ contract ConsumerAccount is EIP712, ReentrancyGuard, ITransferExecutor {
     event OracleUpdated(address oracle);
     event TokenAssociated(address indexed token);
     event SwapRouterSet(address indexed router, bool allowed);
+    event VaultSet(address indexed vault, bool allowed);
+    event VaultDeposited(address indexed signer, address indexed vault, uint256 assets, uint256 shares);
     event SubscriptionCreated(
         uint256 indexed id, address asset, address to, uint256 amount, uint64 interval, uint64 firstAt, uint32 count
     );
@@ -215,6 +219,11 @@ contract ConsumerAccount is EIP712, ReentrancyGuard, ITransferExecutor {
 
     /// Routers the owner trusts for swap-to-pay. Sessions cannot change this list.
     mapping(address => bool) public swapRouterAllowed;
+
+    /// @notice Vaults sessions may deposit into (owner-managed).
+    mapping(address => bool) public vaultAllowed;
+    /// @notice Share tokens of every vault ever allowed. Sessions can never move them: that would be a withdrawal.
+    mapping(address => bool) public isVaultShare;
 
     mapping(uint256 => Subscription) public subscriptions;
     uint256 public subscriptionCount;
@@ -276,6 +285,21 @@ contract ConsumerAccount is EIP712, ReentrancyGuard, ITransferExecutor {
             if (Actions.isPrivileged(id)) revert PrivilegeEscalation();
             if (Actions.isWithdrawal(id)) revert WithdrawForbidden();
             if (!_sessionActionAllowed[_actionKey(signer, _sessions[signer].epoch, id)]) revert ActionNotAllowed();
+        }
+
+        if (id == Actions.VAULT_DEPOSIT) {
+            (address vault, uint256 assets) = abi.decode(action.actionData, (address, uint256));
+            if (!vaultAllowed[vault]) revert TargetNotAllowed();
+            address underlying = IERC4626(vault).asset();
+            uint256 depositUsd6 = isOwner ? 0 : _chargeSession(signer, underlying, vault, assets);
+            uint256 before = IERC20(vault).balanceOf(address(this));
+            IERC20(underlying).forceApprove(vault, assets);
+            uint256 shares = IERC4626(vault).deposit(assets, address(this));
+            IERC20(underlying).forceApprove(vault, 0);
+            if (shares == 0 || IERC20(vault).balanceOf(address(this)) - before != shares) revert VaultDepositFailed();
+            emit VaultDeposited(signer, vault, assets, shares);
+            emit ActionExecuted(id, signer, underlying, vault, assets, depositUsd6);
+            return;
         }
 
         if (id == Actions.SWAP_TO_PAY) {
@@ -374,6 +398,15 @@ contract ConsumerAccount is EIP712, ReentrancyGuard, ITransferExecutor {
         if (router == address(0) || router == HTS || router == address(this)) revert InvalidConfig();
         swapRouterAllowed[router] = allowed;
         emit SwapRouterSet(router, allowed);
+    }
+
+    /// @notice Allows or disallows session deposits into an ERC-4626 vault. Its share token stays non-transferable
+    ///         for sessions forever after.
+    function setVault(address vault, bool allowed) external onlySelf {
+        if (vault == address(0) || vault == HTS || vault == address(this)) revert InvalidConfig();
+        vaultAllowed[vault] = allowed;
+        if (allowed) isVaultShare[vault] = true;
+        emit VaultSet(vault, allowed);
     }
 
     function setOracle(IPriceOracle oracle_) external onlySelf {
@@ -577,6 +610,8 @@ contract ConsumerAccount is EIP712, ReentrancyGuard, ITransferExecutor {
 
     /// @dev Policy steps 8–11: recipient, price, per-call cap, daily cap. Fails closed.
     function _chargeSession(address key, address asset, address to, uint256 amount) internal returns (uint256 usd6) {
+        // Moving vault shares out of the account is a withdrawal, whatever action carries it.
+        if (isVaultShare[asset]) revert WithdrawForbidden();
         Session storage s = _sessions[key];
         if (s.recipientsRestricted && !_sessionRecipientAllowed[_recipientKey(key, s.epoch, to)]) {
             revert RecipientNotAllowed();

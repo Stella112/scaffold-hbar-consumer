@@ -17,6 +17,9 @@ export type Deployment = {
   tokens?: Record<string, { tokenId: string; address: Address; decimals: number; symbol: string; label?: string }>;
   saucerswap?: { router: Address; quoter: Address; whbar: Address };
   oracle?: { address: Address; kind: string; label: string; contractId?: string };
+  /** ERC-4626 savings vaults by asset symbol. */
+  vaults?: Record<string, { address: Address; contractId?: string; asset: Address }>;
+  launchpad?: { address: Address; contractId?: string };
 };
 
 export const testnetDeployment = testnet as Deployment;

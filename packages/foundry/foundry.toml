@@ -20,7 +20,9 @@ optimizer_runs = 200
 # - arbitrary-send-eth: value transfers only happen after owner/session signature + policy checks.
 # - calls-loop / require-revert-in-loop: owner batches revert atomically by design.
 # - reentrancy-events: state-changing entrypoints are nonReentrant and follow checks-effects-interactions.
-exclude_lints = ["mixed-case-variable", "mixed-case-function", "block-timestamp", "arbitrary-send-eth", "calls-loop", "require-revert-in-loop", "reentrancy-events"]
+# - unsafe-typecast: every narrowing cast is bounded first (int64 HTS amounts ≤ int64.max, launch cost ≤ uint128.max,
+#   decimals ≤ 18) and covered by tests in TokenLaunchpad.t.sol / ConsumerAccount.t.sol.
+exclude_lints = ["mixed-case-variable", "mixed-case-function", "block-timestamp", "arbitrary-send-eth", "calls-loop", "require-revert-in-loop", "reentrancy-events", "unsafe-typecast"]
 
 [rpc_endpoints]
 localhost = "http://127.0.0.1:8545"

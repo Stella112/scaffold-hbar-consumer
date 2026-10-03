@@ -8,6 +8,7 @@ export const ACTION_IDS = {
   airdrop: id("consumer.action.airdrop.v1"),
   x402Payment: id("consumer.action.x402-payment.v1"),
   swapToPay: id("consumer.action.swap-to-pay.v1"),
+  vaultDeposit: id("consumer.action.vault-deposit.v1"),
 } as const;
 
 /** Reserved IDs a session can never use (the contract answers PRIVILEGE_ESCALATION / WITHDRAW_FORBIDDEN). */
@@ -73,6 +74,17 @@ export const decodeTransferAction = (data: Hex): TransferActionInput => {
 };
 
 export const encodeSwapToPay = (i: SwapToPayInput): Hex => encodeAbiParameters(swapToPayParams, [i]);
+
+const vaultDepositParams = [{ type: "address", name: "vault" }, { type: "uint256", name: "assets" }] as const;
+
+/** ERC-4626 deposit into an owner-allowlisted vault; shares are always minted to the account itself. */
+export const encodeVaultDeposit = (i: { vault: Address; assets: bigint }): Hex =>
+  encodeAbiParameters(vaultDepositParams, [i.vault, i.assets]);
+
+export const decodeVaultDeposit = (data: Hex): { vault: Address; assets: bigint } => {
+  const [vault, assets] = decodeAbiParameters(vaultDepositParams, data);
+  return { vault, assets };
+};
 
 export const decodeSwapToPay = (data: Hex): SwapToPayInput => decodeAbiParameters(swapToPayParams, data)[0];
 

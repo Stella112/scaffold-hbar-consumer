@@ -28,8 +28,12 @@ import {
   consumerAccountFactoryAbi,
   consumerAccountFactoryBytecode,
   entityIdToLongZero,
+  savingsVaultAbi,
+  savingsVaultBytecode,
   supraPriceOracleAbi,
   supraPriceOracleBytecode,
+  tokenLaunchpadAbi,
+  tokenLaunchpadBytecode,
 } from "@sh/sdk";
 import { hederaClient, mirror, publicClient, walletFor } from "./lib/clients";
 import { ROOT, appendEnv, hex0x, operatorEnv, parseEnv } from "./lib/env";
@@ -203,6 +207,17 @@ async function main() {
       deployment.factory = f.address;
       deployment.factoryContractId = f.contractId;
       deployment.factoryCodeHash = codeHash;
+    }
+
+    // Recipes: a WHBAR savings vault (agents may deposit, never withdraw) and the token launchpad.
+    if (!deployment.vaults?.WHBAR) {
+      const whbar = entityIdToLongZero(TOKENS.WHBAR.tokenId);
+      const v = await deploy("SavingsVault", savingsVaultAbi, savingsVaultBytecode, [whbar, "Savings WHBAR", "svWHBAR"]);
+      deployment.vaults = { ...deployment.vaults, WHBAR: { address: v.address, contractId: v.contractId, asset: whbar } };
+    }
+    if (!deployment.launchpad) {
+      const l = await deploy("TokenLaunchpad", tokenLaunchpadAbi, tokenLaunchpadBytecode, []);
+      deployment.launchpad = { address: l.address, contractId: l.contractId };
     }
 
     // HCS audit topic: only the sponsor key can submit.

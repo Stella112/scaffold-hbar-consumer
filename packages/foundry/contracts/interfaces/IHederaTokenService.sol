@@ -32,7 +32,45 @@ interface IHederaTokenService {
         int64 serial;
     }
 
+    struct Expiry {
+        int64 second;
+        address autoRenewAccount;
+        int64 autoRenewPeriod;
+    }
+
+    struct KeyValue {
+        bool inheritAccountKey;
+        address contractId;
+        bytes ed25519;
+        bytes ECDSA_secp256k1;
+        address delegatableContractId;
+    }
+
+    /// keyType bit flags: 0 admin, 1 kyc, 2 freeze, 3 wipe, 4 supply, 5 feeSchedule, 6 pause.
+    struct TokenKey {
+        uint256 keyType;
+        KeyValue key;
+    }
+
+    struct HederaToken {
+        string name;
+        string symbol;
+        address treasury;
+        string memo;
+        bool tokenSupplyType; // true = FINITE
+        int64 maxSupply;
+        bool freezeDefault;
+        TokenKey[] tokenKeys;
+        Expiry expiry;
+    }
+
     function associateToken(address account, address token) external returns (int64 responseCode);
+
+    /// msg.value pays the token-creation fee (in tinybars inside the EVM).
+    function createFungibleToken(HederaToken memory token, int64 initialTotalSupply, int32 decimals)
+        external
+        payable
+        returns (int64 responseCode, address tokenAddress);
 
     /// HIP-904: delivers immediately when the receiver is associated or has a free auto-association slot,
     /// otherwise records a pending airdrop the receiver can claim.
