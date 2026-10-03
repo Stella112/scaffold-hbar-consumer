@@ -522,16 +522,14 @@ contract ConsumerAccount is EIP712, ReentrancyGuard, ITransferExecutor {
         IERC20 out = IERC20(p.tokenOut);
         uint256 before = out.balanceOf(p.to);
         IERC20(p.tokenIn).forceApprove(p.router, p.amountInMaximum);
-        amountIn = ISaucerSwapV2Router(p.router)
-            .exactOutput(
-                ISaucerSwapV2Router.ExactOutputParams({
-                    path: p.path,
-                    recipient: p.to,
-                    deadline: p.deadline,
-                    amountOut: p.amountOut,
-                    amountInMaximum: p.amountInMaximum
-                })
-            );
+        ISaucerSwapV2Router.ExactOutputParams memory params = ISaucerSwapV2Router.ExactOutputParams({
+            path: p.path,
+            recipient: p.to,
+            deadline: p.deadline,
+            amountOut: p.amountOut,
+            amountInMaximum: p.amountInMaximum
+        });
+        amountIn = ISaucerSwapV2Router(p.router).exactOutput(params);
         IERC20(p.tokenIn).forceApprove(p.router, 0);
         if (amountIn > p.amountInMaximum) revert SwapOverspent(amountIn, p.amountInMaximum);
         uint256 delivered = out.balanceOf(p.to) - before;

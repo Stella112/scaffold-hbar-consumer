@@ -17,6 +17,14 @@ trap 'kill "${SERVER_PID:-0}" 2>/dev/null || true; rm -rf "$WORK"' EXIT
 
 step() { printf '\n=== %s\n' "$*"; }
 
+# The CLI requires a git identity for its first commit. If none is configured, use a throwaway global config
+# that lives in the temp dir, so the machine's real git config is never touched.
+if ! git config user.name >/dev/null 2>&1; then
+  export GIT_CONFIG_GLOBAL="$WORK/gitconfig"
+  git config --global user.name scaffold-gate
+  git config --global user.email gate@localhost
+fi
+
 step "scaffold ($TEMPLATE${1:+, $1})"
 cd "$WORK"
 if [ "${1:-}" = "--local" ]; then
