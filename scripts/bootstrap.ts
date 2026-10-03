@@ -10,6 +10,7 @@
  *
  * Controller and agent keys intentionally get NO Hedera account: they only sign, and hold 0 HBAR.
  */
+import { encodeDeployData } from "viem";
 import fs from "node:fs";
 import path from "node:path";
 import {
@@ -127,11 +128,16 @@ async function main() {
       const pc = publicClient();
       const wallet = walletFor(op.HEDERA_OPERATOR_KEY);
       const oracle = (process.env.PRICE_ORACLE as `0x${string}` | undefined) ?? HBAR;
+      const deployData = encodeDeployData({ abi: consumerAccountFactoryAbi, bytecode: consumerAccountFactoryBytecode, args: [oracle] });
+      // The factory embeds ConsumerAccount's creation code; estimate rather than guess, capped at Hedera's 15M limit.
+      const estimate = await pc.estimateGas({ account: wallet.account!, data: deployData });
+      const gas = [(estimate * 12n) / 10n, 15_000_000n].reduce((a, c) => (a < c ? a : c));
+      console.log(`  factory deploy gas: estimate ${estimate}, limit ${gas}`);
       const hash = await wallet.deployContract({
         abi: consumerAccountFactoryAbi,
         bytecode: consumerAccountFactoryBytecode,
         args: [oracle],
-        gas: 4_000_000n,
+        gas,
       });
       const rcpt = await pc.waitForTransactionReceipt({ hash });
       if (rcpt.status !== "success" || !rcpt.contractAddress) throw new Error(`factory deploy failed: ${hash}`);
