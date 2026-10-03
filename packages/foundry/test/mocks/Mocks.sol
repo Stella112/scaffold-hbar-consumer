@@ -146,3 +146,32 @@ contract MockSupraFeed is ISupraSValueFeed {
         return _feeds[pairIndex];
     }
 }
+
+/// Test-only. Records scheduleCall requests at 0x16b (etched); never used by testnet proofs.
+contract MockScheduleService {
+    int64 public responseCode = 22;
+    uint256 public calls;
+    address public lastTo;
+    uint256 public lastExpiry;
+    uint256 public lastGas;
+    bytes public lastData;
+    address public lastDeleted;
+
+    function setResponseCode(int64 rc) external {
+        responseCode = rc;
+    }
+
+    function scheduleCall(address to, uint256 expirySecond, uint256 gasLimit, uint64, bytes memory callData)
+        external
+        returns (int64, address)
+    {
+        calls++;
+        (lastTo, lastExpiry, lastGas, lastData) = (to, expirySecond, gasLimit, callData);
+        return (responseCode, address(uint160(0x5c4ed000 + calls)));
+    }
+
+    function deleteSchedule(address scheduleAddress) external returns (int64) {
+        lastDeleted = scheduleAddress;
+        return 22;
+    }
+}

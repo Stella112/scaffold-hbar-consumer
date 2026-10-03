@@ -64,6 +64,48 @@ export const selfCall = {
     value: 0n,
     data: encodeFunctionData({ abi: consumerAccountAbi, functionName: "cancelRecovery", args: [] }),
   }),
+  /** Recurring payment executed by the Hedera Schedule Service; the account pays the scheduled fees in HBAR. */
+  createSubscription: (account: Address, s: SubscriptionConfig): Call => ({
+    target: account,
+    value: 0n,
+    data: encodeFunctionData({
+      abi: consumerAccountAbi,
+      functionName: "createSubscription",
+      args: [s.asset, s.to, s.amount, s.intervalSeconds, s.firstAt, s.count, s.gasLimit ?? DEFAULT_SUBSCRIPTION_GAS],
+    }),
+  }),
+  cancelSubscription: (account: Address, id: bigint): Call => ({
+    target: account,
+    value: 0n,
+    data: encodeFunctionData({ abi: consumerAccountAbi, functionName: "cancelSubscription", args: [id] }),
+  }),
+};
+
+/** Gas for each scheduled execution (payment + rescheduling through HSS). */
+export const DEFAULT_SUBSCRIPTION_GAS = 400_000;
+
+export type SubscriptionConfig = {
+  /** HBAR (address(0), amount in tinybars) or an HTS token EVM address. */
+  asset: Address;
+  to: Address;
+  amount: bigint;
+  intervalSeconds: bigint;
+  /** Unix seconds of the first payment; must be in the future. */
+  firstAt: bigint;
+  count: number;
+  gasLimit?: number;
+};
+
+export type SubscriptionState = {
+  id: bigint;
+  asset: Address;
+  to: Address;
+  amount: bigint;
+  interval: bigint;
+  nextAt: bigint;
+  remaining: number;
+  gasLimit: number;
+  schedule: Address;
 };
 
 export const encodeExecuteOwnerIntent = (intent: OwnerIntent, signature: Hex): Hex =>
@@ -112,6 +154,26 @@ export class ConsumerAccountReader {
       dailyCapUsd6: s.dailyCapUsd6,
       spentTodayUsd6: s.spentTodayUsd6,
     };
+  }
+
+  async subscriptions(): Promise<SubscriptionState[]> {
+    const count = await this.client.readContract({
+      address: this.address,
+      abi: consumerAccountAbi,
+      functionName: "subscriptionCount",
+    });
+    const ids = Array.from({ length: Number(count) }, (_, i) => BigInt(i + 1));
+    return Promise.all(
+      ids.map(async id => {
+        const [asset, to, amount, interval, nextAt, remaining, gasLimit, schedule] = await this.client.readContract({
+          address: this.address,
+          abi: consumerAccountAbi,
+          functionName: "subscriptions",
+          args: [id],
+        });
+        return { id, asset, to, amount, interval: BigInt(interval), nextAt: BigInt(nextAt), remaining, gasLimit, schedule };
+      }),
+    );
   }
 
   isSessionActionAllowed(key: Address, actionId: Hex): Promise<boolean> {

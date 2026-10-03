@@ -8,6 +8,7 @@ import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.s
 import { ReentrancyGuard } from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import { IHederaTokenService } from "./interfaces/IHederaTokenService.sol";
 import { IPriceOracle } from "./interfaces/IPriceOracle.sol";
+import { IHederaScheduleService } from "./interfaces/IHederaScheduleService.sol";
 import { ITransferExecutor } from "./interfaces/ITransferExecutor.sol";
 import { Actions } from "./Actions.sol";
 import { ISaucerSwapV2Router } from "./interfaces/ISaucerSwapV2Router.sol";
@@ -27,6 +28,11 @@ contract ConsumerAccount is EIP712, ReentrancyGuard, ITransferExecutor {
 
     address internal constant HTS = address(0x167);
     int64 internal constant HTS_SUCCESS = 22;
+    /// @dev Hedera Schedule Service (HIP-1215). Same SUCCESS response code as HTS.
+    address internal constant HSS = address(0x16b);
+    uint64 public constant MIN_SUBSCRIPTION_INTERVAL = 60;
+    uint32 public constant MIN_SUBSCRIPTION_GAS = 100_000;
+    uint32 public constant MAX_SUBSCRIPTION_GAS = 3_000_000;
     /// Shortest allowed guardian-recovery timelock.
     uint64 public constant MIN_RECOVERY_DELAY = 5 minutes;
     uint256 public constant MAX_GUARDIANS = 16;
@@ -103,6 +109,18 @@ contract ConsumerAccount is EIP712, ReentrancyGuard, ITransferExecutor {
         uint32 approvals;
     }
 
+    /// @notice Recurring payment executed by the Hedera Schedule Service; created and cancelled by the owner only.
+    struct Subscription {
+        address asset; // address(0) = HBAR (tinybars)
+        address to;
+        uint128 amount;
+        uint64 interval; // seconds between payments
+        uint64 nextAt; // unix seconds of the next due payment
+        uint32 remaining; // payments left; 0 = inactive
+        uint32 gasLimit; // gas for each scheduled execution
+        address schedule; // current HSS schedule (0 if none)
+    }
+
     // ---------------------------------------------------------------- errors (policy reason codes)
 
     error SessionExpired();
@@ -135,6 +153,9 @@ contract ConsumerAccount is EIP712, ReentrancyGuard, ITransferExecutor {
     error SwapPathMismatch();
     error SwapUnderdelivered(uint256 delivered, uint256 requested);
     error SwapOverspent(uint256 amountIn, uint256 amountInMaximum);
+    error SubscriptionInactive();
+    error SubscriptionNotDue();
+    error ScheduleFailed(int64 responseCode);
 
     // ---------------------------------------------------------------- events
 
@@ -155,6 +176,13 @@ contract ConsumerAccount is EIP712, ReentrancyGuard, ITransferExecutor {
     event OracleUpdated(address oracle);
     event TokenAssociated(address indexed token);
     event SwapRouterSet(address indexed router, bool allowed);
+    event SubscriptionCreated(
+        uint256 indexed id, address asset, address to, uint256 amount, uint64 interval, uint64 firstAt, uint32 count
+    );
+    event SubscriptionScheduled(uint256 indexed id, address schedule, uint64 at);
+    event SubscriptionScheduleFailed(uint256 indexed id, int64 responseCode);
+    event SubscriptionPaid(uint256 indexed id, uint32 remaining, uint64 nextAt);
+    event SubscriptionCancelled(uint256 indexed id, bool scheduleDeleted);
     event SwapToPayExecuted(
         address indexed signer, address tokenIn, uint256 amountIn, address tokenOut, uint256 amountOut, address to
     );
@@ -184,6 +212,9 @@ contract ConsumerAccount is EIP712, ReentrancyGuard, ITransferExecutor {
 
     /// Routers the owner trusts for swap-to-pay. Sessions cannot change this list.
     mapping(address => bool) public swapRouterAllowed;
+
+    mapping(uint256 => Subscription) public subscriptions;
+    uint256 public subscriptionCount;
 
     // ---------------------------------------------------------------- construction
 
@@ -379,6 +410,93 @@ contract ConsumerAccount is EIP712, ReentrancyGuard, ITransferExecutor {
     function cancelRecovery() external onlySelf {
         if (recovery.newOwner == address(0)) revert NoRecoveryPending();
         _cancelRecovery();
+    }
+
+    // ---------------------------------------------------------------- recurring payments (HSS)
+
+    /// @notice Creates a recurring payment and schedules its first execution with the Hedera Schedule Service.
+    ///         The account pays the scheduled transactions' fees, so it must hold HBAR.
+    function createSubscription(
+        address asset,
+        address to,
+        uint128 amount,
+        uint64 interval,
+        uint64 firstAt,
+        uint32 count,
+        uint32 gasLimit
+    ) external onlySelf returns (uint256 id) {
+        if (
+            to == address(0) || amount == 0 || count == 0 || interval < MIN_SUBSCRIPTION_INTERVAL
+                || firstAt <= block.timestamp || gasLimit < MIN_SUBSCRIPTION_GAS || gasLimit > MAX_SUBSCRIPTION_GAS
+        ) revert InvalidConfig();
+        id = ++subscriptionCount;
+        subscriptions[id] = Subscription({
+            asset: asset,
+            to: to,
+            amount: amount,
+            interval: interval,
+            nextAt: firstAt,
+            remaining: count,
+            gasLimit: gasLimit,
+            schedule: address(0)
+        });
+        emit SubscriptionCreated(id, asset, to, amount, interval, firstAt, count);
+        int64 rc = _schedule(id, firstAt, gasLimit);
+        if (rc != HTS_SUCCESS) revert ScheduleFailed(rc);
+    }
+
+    /// @notice Stops a recurring payment and deletes its pending schedule (best effort).
+    function cancelSubscription(uint256 id) external onlySelf {
+        Subscription storage s = subscriptions[id];
+        if (s.remaining == 0) revert SubscriptionInactive();
+        s.remaining = 0;
+        address sched = s.schedule;
+        s.schedule = address(0);
+        bool deleted;
+        if (sched != address(0)) {
+            // A schedule that already executed or expired cannot be deleted; remaining == 0 makes it inert anyway.
+            (bool ok, bytes memory ret) = HSS.call(abi.encodeCall(IHederaScheduleService.deleteSchedule, (sched)));
+            deleted = ok && ret.length >= 32 && abi.decode(ret, (int64)) == HTS_SUCCESS;
+        }
+        emit SubscriptionCancelled(id, deleted);
+    }
+
+    /// @notice Pays one due instalment and schedules the next. Permissionless but inert: it can only pay the
+    ///         owner-configured recipient and amount, only once due, and only while payments remain.
+    function executeSubscription(uint256 id) external nonReentrant {
+        Subscription storage s = subscriptions[id];
+        if (s.remaining == 0) revert SubscriptionInactive();
+        if (block.timestamp < s.nextAt) revert SubscriptionNotDue();
+        uint32 remaining = s.remaining - 1;
+        uint64 nextAt = s.nextAt + s.interval;
+        s.remaining = remaining;
+        s.nextAt = nextAt;
+        s.schedule = address(0);
+        _transferOut(s.asset, s.to, s.amount);
+        emit SubscriptionPaid(id, remaining, nextAt);
+        if (remaining != 0) {
+            // A due date already in the past cannot be scheduled; the next call to this function catches up.
+            uint64 at = nextAt > block.timestamp ? nextAt : uint64(block.timestamp) + 1;
+            int64 rc = _schedule(id, at, s.gasLimit);
+            // Never block a payment on rescheduling; anyone can execute the next instalment once due.
+            if (rc != HTS_SUCCESS) emit SubscriptionScheduleFailed(id, rc);
+        }
+    }
+
+    function _schedule(uint256 id, uint64 at, uint32 gasLimit) internal returns (int64 rc) {
+        (bool ok, bytes memory ret) = HSS.call(
+            abi.encodeCall(
+                IHederaScheduleService.scheduleCall,
+                (address(this), at, gasLimit, 0, abi.encodeCall(this.executeSubscription, (id)))
+            )
+        );
+        if (!ok || ret.length < 64) return -1;
+        address sched;
+        (rc, sched) = abi.decode(ret, (int64, address));
+        if (rc == HTS_SUCCESS) {
+            subscriptions[id].schedule = sched;
+            emit SubscriptionScheduled(id, sched, at);
+        }
     }
 
     // ---------------------------------------------------------------- guardian recovery

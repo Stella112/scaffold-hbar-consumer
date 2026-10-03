@@ -11,6 +11,8 @@ export type Deployment = {
   updatedAt: string | null;
   factory?: Address;
   factoryContractId?: string;
+  /** keccak256 of the factory creation bytecode that was deployed; bootstrap redeploys when it changes. */
+  factoryCodeHash?: string;
   auditTopicId?: string;
   tokens?: Record<string, { tokenId: string; address: Address; decimals: number; symbol: string; label?: string }>;
   saucerswap?: { router: Address; quoter: Address; whbar: Address };

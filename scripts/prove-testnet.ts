@@ -13,6 +13,7 @@ import {
   HEDERA_TESTNET,
   RESERVED_ACTION_IDS,
   type Receipt,
+  ConsumerAccountReader,
   buildOwnerIntent,
   buildSessionAction,
   decodeRevertData,
@@ -534,6 +535,54 @@ await flow(9, "Raw-call bypass: relayer denial + on-chain revert + HCS record", 
     hcs: viaRelayer.hcsAudit ? `topic ${viaRelayer.hcsAudit.topicId} seq ${viaRelayer.hcsAudit.sequenceNumber}` : "none",
     status: ok ? "PASS" : "FAIL",
   } satisfies Evidence;
+});
+
+await flow(10, "Recurring payment executed by the Hedera Schedule Service", async () => {
+  // Scheduled executions are paid by the account itself (HSS charges the scheduling contract), so top it up.
+  const fund = await operatorWallet.sendTransaction({ to: account, value: tinybarsToWeibars(300_000_000n) });
+  await pc.waitForTransactionReceipt({ hash: fund });
+  const amount = 1_000_000n; // 0.01 HBAR per instalment
+  const merchantBefore = (await M.getHbarBalance(roles.MERCHANT_ACCOUNT_ID)).tinybars;
+  const firstAt = BigInt(Math.floor(Date.now() / 1000) + 45);
+  const r = await ownerSend([
+    selfCall.createSubscription(account, {
+      asset: HBAR,
+      to: merchantEvm,
+      amount,
+      intervalSeconds: 60n,
+      firstAt,
+      count: 2,
+    }),
+  ]);
+  const e = fromReceipt(10, "Recurring payment executed by the Hedera Schedule Service", r, {
+    asset: "HBAR",
+    input: `owner intent createSubscription: 0.01 HBAR to merchant every 60s × 2, first at ${new Date(Number(firstAt) * 1000).toISOString()}`,
+    expected: "HSS executes both instalments with no further transactions from anyone; merchant +2000000 tinybars",
+  });
+  if (r.status !== "success") return e;
+
+  // Wait for the network to run both scheduled calls (each reschedules the next through HSS).
+  const reader = new ConsumerAccountReader(pc, account);
+  const deadline = Date.now() + 6 * 60_000;
+  let sub = (await reader.subscriptions())[0]!;
+  while (sub.remaining > 0 && Date.now() < deadline) {
+    await new Promise(res => setTimeout(res, 10_000));
+    sub = (await reader.subscriptions())[0]!;
+  }
+  await new Promise(res => setTimeout(res, 6000));
+  const delta = (await M.getHbarBalance(roles.MERCHANT_ACCOUNT_ID)).tinybars - merchantBefore;
+  const contract = await M.getContract(account);
+  const schedules = contract
+    ? await M.get<{ schedules: { schedule_id: string; executed_timestamp: string | null; creator_account_id: string }[] }>(
+        `/schedules?account.id=${contract.contract_id}&order=desc&limit=10`,
+      )
+    : { schedules: [] };
+  const executed = schedules.schedules.filter(s => s.executed_timestamp);
+  e.mirrorQuery = contract ? `${HEDERA_TESTNET.mirrorUrl}/schedules?account.id=${contract.contract_id}&order=desc` : null;
+  e.mirrorResult = `${schedules.schedules.length} schedules created by the account, ${executed.length} executed: ${executed.map(s => s.schedule_id).join(", ")}`;
+  e.actual += `; remaining=${sub.remaining}; merchant delta=${delta}`;
+  e.status = sub.remaining === 0 && delta === 2n * amount && executed.length >= 2 ? "PASS" : "FAIL";
+  return e;
 });
 
 const header = [

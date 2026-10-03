@@ -10,7 +10,7 @@
  *
  * Controller and agent keys intentionally get NO Hedera account: they only sign, and hold 0 HBAR.
  */
-import { type Abi, type Address, type Hex, encodeDeployData } from "viem";
+import { type Abi, type Address, type Hex, encodeDeployData, keccak256 } from "viem";
 import fs from "node:fs";
 import path from "node:path";
 import {
@@ -178,7 +178,13 @@ async function main() {
       };
     }
 
-    // Factory: new accounts take the factory's default oracle, so redeploy if it does not match.
+    // Factory: redeploy when the contract code changed (new accounts get the new ConsumerAccount) or when its
+    // default oracle differs (new accounts take the factory's default oracle).
+    const codeHash = keccak256(consumerAccountFactoryBytecode);
+    if (deployment.factory && deployment.factoryCodeHash !== codeHash) {
+      console.log("  ConsumerAccountFactory bytecode changed; deploying a new factory");
+      deployment.factory = undefined;
+    }
     if (deployment.factory) {
       const current = await pc.readContract({
         address: deployment.factory,
@@ -196,6 +202,7 @@ async function main() {
       ]);
       deployment.factory = f.address;
       deployment.factoryContractId = f.contractId;
+      deployment.factoryCodeHash = codeHash;
     }
 
     // HCS audit topic: only the sponsor key can submit.
