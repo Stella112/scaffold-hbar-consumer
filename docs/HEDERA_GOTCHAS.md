@@ -10,3 +10,17 @@
 - **Gas.** Hedera charges at least 80% of the gas limit, so the relayer estimates and pads instead of using a huge fixed limit.
 - **ECDSA.** Accounts that sign EVM transactions (operator, sponsor) must be ECDSA (secp256k1) with an EVM alias. Controller and agent keys sign EIP-712 messages only and need no Hedera account. Not every Hedera account must be ECDSA — only the ones in EVM-facing flows here.
 - **Fees on pending airdrops.** HIP-904 pending airdrops charge the submitter for the association/rent; the sponsor pays this for sponsored airdrops.
+
+## HBAR from a contract to an aliased account's long-zero address fails
+
+Sending native HBAR from a contract to the **long-zero** address (`0x000…<num>`) of an account that has an ECDSA
+EVM alias reverts (`NativeTransferFailed` from `ConsumerAccount._transferOut`; reproduced on testnet 2026-10-03 with
+Mirror Node `/contracts/call`). Sending to the account's **EVM alias** succeeds. Resolve recipients with
+`resolveX402PayTo(mirror, accountId)`: alias when present, long-zero only for accounts without one. Session recipient
+allowlists must use the same resolved address.
+
+## Pyth on Hedera needs a Hermes API key
+
+The Pyth contract on testnet holds prices last updated weeks ago (pull oracle); since 2026-08 Hermes requires an
+API key to fetch updates. Supra's push feeds on testnet (`0x6Cd5…b917`) are updated by Supra (hourly or on a 5%
+move) and need no key, so `SupraPriceOracle` uses them.

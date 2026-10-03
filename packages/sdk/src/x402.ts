@@ -3,6 +3,7 @@ import { consumerAccountAbi } from "./abi";
 import { HBAR } from "./actions";
 import { entityIdToLongZero, isEntityId } from "./hedera";
 import { type TypedDataSigner, signTransferAuthorization } from "./intent";
+import type { MirrorClient } from "./mirror";
 
 /**
  * x402 `exact` scheme on Hedera, `transferExecutor` asset-transfer method
@@ -45,13 +46,20 @@ export function x402AssetToAddress(asset: string): Address {
   return entityIdToLongZero(asset);
 }
 
+/** The part of MirrorClient needed to resolve accounts (lets tests pass a stub). */
+export type AccountResolver = Pick<MirrorClient, "getAccount">;
+
 /**
- * `payTo` to an EVM address. Rule shared by client and facilitator: the long-zero address of the Hedera account,
- * which every Hedera account (alias or not) can receive at. Session recipient allowlists must use this address.
+ * `payTo` to the EVM address a contract must send to. Rule shared by client and facilitator: the account's EVM
+ * alias when it has one, otherwise its long-zero address. Hedera rejects native HBAR sent from a contract to the
+ * long-zero address of an aliased account (NativeTransferFailed, observed on testnet), so the alias is required.
+ * Session recipient allowlists must use this same address.
  */
-export function x402PayToAddress(payTo: string): Address {
+export async function resolveX402PayTo(mirror: AccountResolver, payTo: string): Promise<Address> {
   if (!isEntityId(payTo)) throw new Error(`x402 payTo must be a Hedera account id, got ${payTo}`);
-  return entityIdToLongZero(payTo);
+  const acct = await mirror.getAccount(payTo);
+  if (!acct) throw new Error(`x402 payTo ${payTo} not found on Mirror Node`);
+  return acct.evm_address && !/^0x0{24}/i.test(acct.evm_address) ? getAddress(acct.evm_address) : entityIdToLongZero(payTo);
 }
 
 export const encodeTransferAuthorization = (nonce: bigint, validUntil: bigint, signature: Hex): Hex =>
@@ -81,6 +89,8 @@ export type CreateTransferExecutorPayloadArgs = {
   /** ConsumerAccount Hedera contract id (0.0.x). */
   accountId: string;
   requirements: X402PaymentRequirements;
+  /** Resolves payTo exactly as the facilitator does (Mirror Node). */
+  mirror: AccountResolver;
   nonce?: bigint;
   now?: () => number;
 };
@@ -101,7 +111,7 @@ export async function createTransferExecutorPayload(a: CreateTransferExecutorPay
   const signature = await signTransferAuthorization(a.signer, a.chainId, {
     from,
     asset: x402AssetToAddress(r.asset),
-    to: x402PayToAddress(r.payTo),
+    to: await resolveX402PayTo(a.mirror, r.payTo),
     amount,
     nonce,
     validUntil,

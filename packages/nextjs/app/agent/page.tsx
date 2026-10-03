@@ -13,7 +13,8 @@ import { ownerCalls } from "~~/services/consumer/execute";
 import { formatUnits, parseUnits } from "~~/services/consumer/format";
 
 const SCENARIOS = [
-  { id: "pay", label: "Pay within limits", expect: "allowed (if an oracle prices it)" },
+  { id: "pay", label: "Pay within limits", expect: "allowed (priced live by the Supra oracle)" },
+  { id: "x402", label: "Buy data via x402", expect: "402 → signed payment → 200 + settlement" },
   { id: "overspend", label: "Spend 1000× more", expect: "PER_CALL_CAP_EXCEEDED / PRICE_UNAVAILABLE" },
   { id: "other-recipient", label: "Pay itself", expect: "RECIPIENT_NOT_ALLOWED" },
   { id: "withdraw", label: "Withdraw savings", expect: "WITHDRAW_FORBIDDEN" },
@@ -35,6 +36,7 @@ const AgentPage: NextPage = () => {
   const [busy, setBusy] = useState<string | null>(null);
   const [grantResult, setGrantResult] = useState<SponsorResponse | null>(null);
   const [runs, setRuns] = useState<{ label: string; receipt: ReceiptJson; auditError: string | null }[]>([]);
+  const [x402Runs, setX402Runs] = useState<X402Run[]>([]);
 
   useEffect(() => {
     if (agentInfo.data?.address && !agentAddr) setAgentAddr(agentInfo.data.address);
@@ -184,6 +186,7 @@ const AgentPage: NextPage = () => {
                                   to: isAddress(recipient) ? recipient : undefined,
                                 }),
                               }).then(r => r.json());
+                              if (s.id === "x402") setX402Runs(prev => [res as X402Run, ...prev]);
                               if (res.receipt) {
                                 saveReceipt(res.receipt);
                                 setRuns(prev => [
@@ -199,6 +202,9 @@ const AgentPage: NextPage = () => {
                           </button>
                         ))}
                       </div>
+                      {x402Runs.map((r, i) => (
+                        <X402Card key={`x402-${i}`} run={r} />
+                      ))}
                       {runs.map((r, i) => (
                         <div key={i} className="flex flex-col gap-1">
                           <span className="text-xs font-medium">{r.label}</span>
@@ -216,6 +222,35 @@ const AgentPage: NextPage = () => {
     </div>
   );
 };
+
+type X402Run = {
+  ok?: boolean;
+  steps?: string[];
+  error?: string | null;
+  hashscan?: string | null;
+  settlement?: { success: boolean; transaction: string; payer?: string; errorReason?: string } | null;
+  data?: { hbarUsd: number | null; source?: string; readAt?: string } | null;
+};
+
+function X402Card({ run }: { run: X402Run }) {
+  return (
+    <div className={`alert ${run.ok ? "alert-success" : "alert-warning"} flex flex-col items-start gap-1 text-xs`}>
+      <span className="font-medium">x402 payment {run.ok ? "settled" : "not completed"}</span>
+      {run.steps?.map((s, i) => (
+        <span key={i} className="break-all">
+          {i + 1}. {s}
+        </span>
+      ))}
+      {run.data?.hbarUsd != null ? <span>Paid data: 1 HBAR = ${run.data.hbarUsd.toFixed(4)}</span> : null}
+      {run.error ? <span>Reason: {run.error}</span> : null}
+      {run.hashscan ? (
+        <a className="link" href={run.hashscan} target="_blank" rel="noreferrer">
+          View settlement on HashScan
+        </a>
+      ) : null}
+    </div>
+  );
+}
 
 function AgentPanel({
   account,

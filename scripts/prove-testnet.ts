@@ -32,7 +32,7 @@ import {
   X402_HEDERA_TESTNET,
   X402_VERSION,
   x402HbarSpendControls,
-  x402PayToAddress,
+  resolveX402PayTo,
 } from "@sh/sdk";
 import { TransferExecutorFacilitator, createTestnetSponsor, loadRelayerConfig, toMirrorTransactionId } from "@sh/relayer";
 import { x402Client } from "@x402/core/client";
@@ -285,9 +285,9 @@ await flow(6, "x402 exact / transferExecutor payment by an agent session", async
   const executorId = await facilitator.admit(account);
   const x402 = new x402Facilitator().register(X402_HEDERA_TESTNET, facilitator);
 
-  // Agent session limited to x402 payments to the merchant (long-zero form, as the facilitator resolves payTo).
+  // Agent session limited to x402 payments to the merchant, at the address the facilitator resolves payTo to.
   const x402Agent = privateKeyToAccount(generatePrivateKey());
-  const merchantLongZero = x402PayToAddress(roles.MERCHANT_ACCOUNT_ID);
+  const merchantPayTo = await resolveX402PayTo(M, roles.MERCHANT_ACCOUNT_ID);
   const grant = await ownerSend([
     selfCall.grantSession(account, {
       key: x402Agent.address,
@@ -295,7 +295,7 @@ await flow(6, "x402 exact / transferExecutor payment by an agent session", async
       perCallCapUsd6: 1_000_000n,
       dailyCapUsd6: 3_000_000n,
       allowedActions: [ACTION_IDS.x402Payment],
-      allowedRecipients: [merchantLongZero],
+      allowedRecipients: [merchantPayTo],
     }),
   ]);
   if (grant.status !== "success") throw new Error(`x402 session grant denied: ${grant.reasonCode}`);
@@ -315,7 +315,7 @@ await flow(6, "x402 exact / transferExecutor payment by an agent session", async
     accepts: [requirements],
   };
   const client = new x402Client()
-    .register(X402_HEDERA_TESTNET, new TransferExecutorClient({ signer: x402Agent, chainId, account, accountId: executorId }))
+    .register(X402_HEDERA_TESTNET, new TransferExecutorClient({ signer: x402Agent, chainId, account, accountId: executorId, mirror: M }))
     .setSpendControls(x402HbarSpendControls(100_000_000n)); // client-side cap: 1 HBAR per payment
   // Wire round trip through the PAYMENT-SIGNATURE header encoding.
   const payload = decodePaymentSignatureHeader(encodePaymentSignatureHeader(await client.createPaymentPayload(paymentRequired)));

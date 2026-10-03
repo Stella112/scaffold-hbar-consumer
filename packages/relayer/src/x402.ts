@@ -25,7 +25,7 @@ import {
   encodeExecuteTransfer,
   isEntityId,
   x402AssetToAddress,
-  x402PayToAddress,
+  resolveX402PayTo,
 } from "@sh/sdk";
 import type { Auditor } from "./audit";
 
@@ -237,7 +237,12 @@ export class TransferExecutorFacilitator implements SchemeNetworkFacilitator {
     if (!contract?.evm_address) return fail("address_resolution_failed", `cannot resolve ${payer}`);
     const from = getAddress(contract.evm_address);
     const asset = x402AssetToAddress(req.asset);
-    const to = x402PayToAddress(req.payTo);
+    let to: Address;
+    try {
+      to = await resolveX402PayTo(this.d.mirror, req.payTo);
+    } catch (e) {
+      return fail("address_resolution_failed", (e as Error).message);
+    }
 
     // 5. Construct the call only from requirements + payer (never client calldata).
     let decoded: ReturnType<typeof decodeTransferAuthorization>;

@@ -61,14 +61,19 @@ await safe("mirror node", async () => {
 
 for (const [role, idKey, keyKey, min] of [
   ["operator", "HEDERA_OPERATOR_ID", "HEDERA_OPERATOR_KEY", 20n],
-  ["sponsor", "SPONSOR_ACCOUNT_ID", "SPONSOR_PRIVATE_KEY", 5n],
+  // An account deployment reserves ~6M gas at the relay minimum price; below ~20 HBAR sponsorship starts failing.
+  ["sponsor", "SPONSOR_ACCOUNT_ID", "SPONSOR_PRIVATE_KEY", 20n],
 ] as const) {
   if (!present(idKey)) continue;
   await safe(`${role} balance`, async () => {
     const acct = await m.getAccount(env[idKey]!);
     if (!acct) return report("FAIL", `${role} balance`, `${env[idKey]} not found`);
     const hbar = BigInt(acct.balance.balance) / 100_000_000n;
-    report(hbar >= min ? "PASS" : "WARN", `${role} balance`, `${env[idKey]} ${hbar} HBAR`);
+    report(
+      hbar >= min ? "PASS" : "WARN",
+      `${role} balance`,
+      `${env[idKey]} ${hbar} HBAR${hbar < min && role === "sponsor" ? " — low: `yarn sponsor:fund 100 --fund`" : ""}`,
+    );
     if (present(keyKey)) {
       const evm = privateKeyToAccount(hex0x(env[keyKey]!)).address.toLowerCase();
       report(acct.evm_address?.toLowerCase() === evm ? "PASS" : "FAIL", `${role} key matches alias`, acct.evm_address ? "checked" : "account has no EVM alias");
@@ -113,14 +118,6 @@ await safe("saucerswap v2", async () => {
     "saucerswap v2",
     `router ok; 0.1 USDC costs ${quote[0]} WHBAR units right now`,
   );
-});
-
-await safe("sponsor balance", async () => {
-  const id = process.env.SPONSOR_ACCOUNT_ID;
-  if (!id) return report("WARN", "sponsor balance", "no sponsor yet — run `yarn bootstrap --fund`");
-  const { tinybars } = await m.getHbarBalance(id);
-  // An account deployment reserves ~6M gas at the relay minimum price; below ~20 HBAR sponsorship starts failing.
-  report(tinybars < 2_000_000_000n ? "WARN" : "PASS", "sponsor balance", `${id} ${(Number(tinybars) / 1e8).toFixed(2)} HBAR${tinybars < 2_000_000_000n ? " — low: `yarn sponsor:fund 100 --fund`" : ""}`);
 });
 
 await safe("price oracle", async () => {
