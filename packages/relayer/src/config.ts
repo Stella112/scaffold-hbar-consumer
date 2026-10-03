@@ -19,7 +19,8 @@ export const relayerEnvSchema = z.object({
   SPONSOR_ACCOUNT_ID: z.string().regex(/^0\.0\.\d+$/, "Hedera account id 0.0.x"),
   SPONSOR_PRIVATE_KEY: z.string().regex(/^(0x)?[0-9a-fA-F]{64}$/, "32-byte ECDSA private key hex"),
   SPONSOR_DAILY_BUDGET_HBAR: hbar.default(hbarToTinybars("50")),
-  SPONSOR_PER_USER_DAILY_HBAR: hbar.default(hbarToTinybars("5")),
+  // Account creation alone reserves ~5–6 HBAR of gas at the relay price, so the per-user default must exceed it.
+  SPONSOR_PER_USER_DAILY_HBAR: hbar.default(hbarToTinybars("10")),
   SPONSOR_RATE_LIMIT_PER_MINUTE: z.coerce.number().int().positive().default(20),
   HCS_AUDIT_TOPIC_ID: z
     .string()
