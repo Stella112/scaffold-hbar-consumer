@@ -1,11 +1,15 @@
 {
-  "name": "blank",
-  "description": "Minimal Scaffold-HBAR starter: Next.js, Hardhat or Foundry, sample HTS contracts, no opinionated product UI.",
+  "name": "scaffold-hbar-consumer",
+  "description": "Programmable ConsumerAccounts on Hedera: sponsored (zero-HBAR) execution, signed payment requests, SaucerSwap swap-to-pay, HIP-904 delivery, policy-constrained agent sessions and HCS audit.",
+  "version": "0.1.0",
   "create-scaffold-hbar": {
+    "requirements": {
+      "node": ">=20.18.3"
+    },
     "capabilities": {
       "frontend": ["nextjs-app"],
-      "solidityFramework": ["foundry", "hardhat"],
-      "packageManager": ["yarn", "npm"]
+      "solidityFramework": ["foundry"],
+      "packageManager": ["yarn"]
     },
     "defaults": {
       "frontend": "nextjs-app",
@@ -18,23 +22,28 @@
           "title": "Next steps",
           "steps": [
             {
-              "label": "Generate or import a deployer account",
-              "command": "{run:framework:account:generate}"
+              "label": "Add a funded ECDSA testnet operator to .env",
+              "command": "cp .env.example .env"
             },
             {
-              "label": "Start a local chain",
-              "command": "{run:framework:chain}"
+              "label": "Get a testnet account and HBAR",
+              "url": "https://portal.hedera.com"
             },
             {
-              "label": "Deploy contracts to that node",
-              "command": "{run:framework:deploy} --network localhost"
+              "label": "Check your setup against live testnet",
+              "command": "{run:doctor}"
             },
             {
-              "label": "Start the frontend",
-              "command": "{run:next:dev}"
+              "label": "Plan, then create sponsor accounts, deploy the factory and the HCS audit topic",
+              "command": "{run:bootstrap} --fund"
             },
             {
-              "text": "For Hedera testnet/mainnet deploy and verify, see the Scaffold HBAR docs and your chosen package README under packages/hardhat or packages/foundry."
+              "label": "Start the app",
+              "command": "{run:start}"
+            },
+            {
+              "label": "Reproduce the testnet proofs",
+              "command": "{run:prove:testnet}"
             }
           ]
         }

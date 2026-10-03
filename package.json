@@ -59,7 +59,8 @@
     "test:integration": "yarn sdk:test && yarn relayer:test",
     "test": "yarn test:contracts && yarn test:integration",
     "redteam": "yarn workspace @sh/foundry test --match-contract \"SessionPolicyTest|X402ExecutorTest|SwapToPayTest|RecoveryTest\"",
-    "verify:all": "yarn lint && yarn typecheck && yarn test && yarn build"
+    "verify:all": "yarn lint && yarn typecheck && yarn test && yarn build",
+    "check:scaffold": "bash scripts/check-scaffold.sh"
   },
   "packageManager": "yarn@3.2.3",
   "devDependencies": {
