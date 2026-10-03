@@ -1,7 +1,7 @@
 {
   "network": "testnet",
   "chainId": 296,
-  "updatedAt": "2026-10-03T23:18:32.693Z",
+  "updatedAt": "2026-10-03T23:35:26.088Z",
   "factory": "0x6a882cd5a6f13960eefcd1290282e550eef81aae",
   "factoryContractId": "0.0.10848625",
   "auditTopicId": "0.0.10841526",
@@ -45,7 +45,8 @@
     }
   },
   "launchpad": {
-    "address": "0x0febc6a4b291505afdeb7f81f634d5c22b85d5c6",
-    "contractId": "0.0.10848628"
+    "address": "0x30f249d46fc5b66ec0d618351e6760a3c7240c67",
+    "contractId": "0.0.10848836",
+    "codeHash": "0x7c99ae5c00c98374b0df01a30347abfb85b099f5069bdaf673bbd65a3c366e38"
   }
 }
