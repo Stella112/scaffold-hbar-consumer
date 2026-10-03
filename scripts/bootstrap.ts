@@ -110,6 +110,7 @@ async function main() {
     const merchantId = process.env.MERCHANT_ACCOUNT_ID!;
     const merchantClient = hederaClient(merchantId, process.env.MERCHANT_PRIVATE_KEY!);
     try {
+      await mirror().waitForAccount(merchantId);
       const missing: string[] = [];
       for (const t of Object.values(TOKENS)) if (!(await mirror().isAssociated(merchantId, t.tokenId))) missing.push(t.tokenId);
       if (missing.length) {

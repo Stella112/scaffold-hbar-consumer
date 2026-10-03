@@ -117,6 +117,17 @@ export class MirrorClient {
     }
   }
 
+  /** New accounts take a few seconds to appear on Mirror Node; poll until indexed. */
+  async waitForAccount(idOrEvmAddress: string, timeoutMs = 60_000, intervalMs = 2_000): Promise<MirrorAccount> {
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+      const a = await this.getAccount(idOrEvmAddress);
+      if (a) return a;
+      if (Date.now() > deadline) throw new MirrorError(`mirror did not index ${idOrEvmAddress} within ${timeoutMs}ms`, 404);
+      await new Promise(res => setTimeout(res, intervalMs));
+    }
+  }
+
   async getTransaction(transactionId: string): Promise<MirrorTransaction | null> {
     try {
       const res = await this.get<{ transactions: MirrorTransaction[] }>(`/transactions/${transactionId}`);
