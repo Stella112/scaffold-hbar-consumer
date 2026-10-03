@@ -14,7 +14,7 @@ export type Deployment = {
   auditTopicId?: string;
   tokens?: Record<string, { tokenId: string; address: Address; decimals: number; symbol: string; label?: string }>;
   saucerswap?: { router: Address; quoter: Address; whbar: Address };
-  oracle?: { address: Address; kind: string; label: string };
+  oracle?: { address: Address; kind: string; label: string; contractId?: string };
 };
 
 export const testnetDeployment = testnet as Deployment;

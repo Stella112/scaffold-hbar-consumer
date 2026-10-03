@@ -115,11 +115,21 @@ await safe("saucerswap v2", async () => {
   );
 });
 
-report(
-  testnetDeployment.oracle ? "PASS" : "WARN",
-  "price oracle",
-  testnetDeployment.oracle ? testnetDeployment.oracle.label : "none configured: session spend fails closed (PRICE_UNAVAILABLE)",
-);
+await safe("price oracle", async () => {
+  const o = testnetDeployment.oracle;
+  if (!o) return report("WARN", "price oracle", "none configured: session spend fails closed (PRICE_UNAVAILABLE)");
+  const [ok, usd6] = await pc.readContract({
+    address: o.address,
+    abi: parseAbi(["function quoteUsd6(address asset, uint256 amount) view returns (bool ok, uint256 usd6)"]),
+    functionName: "quoteUsd6",
+    args: ["0x0000000000000000000000000000000000000000", 100_000_000n],
+  });
+  report(
+    ok ? "PASS" : "FAIL",
+    "price oracle",
+    ok ? `1 HBAR = ${(Number(usd6) / 1e6).toFixed(4)} (${o.kind})` : `${o.kind} returned ok=false (stale or unavailable): agent spend is denied`,
+  );
+});
 report("WARN", "x402 transferExecutor", "@x402/hedera@2.28.0 does not implement transferExecutor (docs/OPEN_QUESTIONS.md U9/U10)");
 
 const fails = results.filter(r => r.level === "FAIL").length;

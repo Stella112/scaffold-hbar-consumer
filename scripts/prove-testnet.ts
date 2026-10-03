@@ -278,7 +278,24 @@ await flow(8, "Agent attacks (session policy red team)", async () => {
       expected: "SessionGranted",
     }),
   ];
+  // Allowed spend, priced by the live Supra feed through the account's oracle.
+  const merchantBefore = (await M.getHbarBalance(roles.MERCHANT_ACCOUNT_ID)).tinybars;
+  const pay = await actionSend(agent, ACTION_IDS.payment, encodePayment({ asset: HBAR, to: merchantEvm, amount: 50_000_000n }));
+  const payEvidence = fromReceipt(8, "Agent pays within caps (Supra-priced)", pay, {
+    asset: "HBAR",
+    input: "session action: pay 0.5 HBAR to merchant (≈ $0.05 at the live HBAR_USD feed; cap $1/call)",
+    expected: "success; spend charged against the session's USD caps",
+  });
+  if (pay.status === "success") {
+    await new Promise(r => setTimeout(r, 6000)); // Mirror Node balance snapshots lag consensus
+    const delta = (await M.getHbarBalance(roles.MERCHANT_ACCOUNT_ID)).tinybars - merchantBefore;
+    payEvidence.actual += `; merchant delta=${delta}`;
+    if (delta !== 50_000_000n) payEvidence.status = "FAIL";
+  }
+  out.push(payEvidence);
+
   const attacks: [string, Hex, Hex, string][] = [
+    ["exceed the per-call cap", ACTION_IDS.payment, encodePayment({ asset: HBAR, to: merchantEvm, amount: 2_000_000_000n }), "PER_CALL_CAP_EXCEEDED"],
     ["withdraw vault assets", RESERVED_ACTION_IDS.vaultWithdraw, "0x", "WITHDRAW_FORBIDDEN"],
     ["change owner", RESERVED_ACTION_IDS.adminSetOwner, "0x", "PRIVILEGE_ESCALATION"],
     ["unknown action", ACTION_IDS.airdrop, encodePayment({ asset: WHBAR, to: merchantEvm, amount: 1n }), "ACTION_NOT_ALLOWED"],

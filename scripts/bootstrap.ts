@@ -10,7 +10,7 @@
  *
  * Controller and agent keys intentionally get NO Hedera account: they only sign, and hold 0 HBAR.
  */
-import { encodeDeployData } from "viem";
+import { type Abi, type Address, type Hex, encodeDeployData } from "viem";
 import fs from "node:fs";
 import path from "node:path";
 import {
@@ -28,6 +28,8 @@ import {
   consumerAccountFactoryAbi,
   consumerAccountFactoryBytecode,
   entityIdToLongZero,
+  supraPriceOracleAbi,
+  supraPriceOracleBytecode,
 } from "@sh/sdk";
 import { hederaClient, mirror, publicClient, walletFor } from "./lib/clients";
 import { ROOT, appendEnv, hex0x, operatorEnv, parseEnv } from "./lib/env";
@@ -47,6 +49,19 @@ const TOKENS = {
   USDC: { tokenId: "0.0.5449", decimals: 6, symbol: "USDC" },
   WHBAR: { tokenId: "0.0.15058", decimals: 8, symbol: "WHBAR" },
   SAUCE: { tokenId: "0.0.1183558", decimals: 6, symbol: "SAUCE" },
+} as const;
+
+// Supra push oracle (docs.supra.com/oracles/data-feeds/push-oracle/networks); pair indexes from the Supra
+// data-feeds index, checked live on testnet 2026-10-03 (HBAR_USD 432 ≈ $0.1016, USDC_USD 89 ≈ $0.99999).
+const SUPRA = {
+  feed: "0x6Cd59830AAD978446e6cc7f6cc173aF7656Fb917" as Address,
+  // Testnet feeds update hourly or on a 5% move; allow two missed heartbeats before failing closed.
+  maxAgeSeconds: 7200n,
+  assets: [
+    { label: "HBAR", asset: HBAR, pair: "HBAR_USD", pairIndex: 432n, decimals: 8 },
+    { label: "WHBAR", asset: entityIdToLongZero(TOKENS.WHBAR.tokenId), pair: "HBAR_USD", pairIndex: 432n, decimals: 8 },
+    { label: "USDC", asset: entityIdToLongZero(TOKENS.USDC.tokenId), pair: "USDC_USD", pairIndex: 89n, decimals: 6 },
+  ],
 } as const;
 
 const SAUCERSWAP = { router: "0.0.1414040", quoter: "0.0.1390002", whbarContract: "0.0.15057" } as const;
@@ -123,28 +138,64 @@ async function main() {
       merchantClient.close();
     }
 
-    // Factory
-    if (!deployment.factory) {
-      const pc = publicClient();
-      const wallet = walletFor(op.HEDERA_OPERATOR_KEY);
-      const oracle = (process.env.PRICE_ORACLE as `0x${string}` | undefined) ?? HBAR;
-      const deployData = encodeDeployData({ abi: consumerAccountFactoryAbi, bytecode: consumerAccountFactoryBytecode, args: [oracle] });
-      // The factory embeds ConsumerAccount's creation code; estimate rather than guess, capped at Hedera's 15M limit.
-      const estimate = await pc.estimateGas({ account: wallet.account!, data: deployData });
+    const pc = publicClient();
+    const wallet = walletFor(op.HEDERA_OPERATOR_KEY);
+    // Estimate rather than guess (the factory embeds ConsumerAccount's creation code), capped at Hedera's 15M limit.
+    const deploy = async (label: string, abi: Abi, bytecode: Hex, args: readonly unknown[]) => {
+      const data = encodeDeployData({ abi, bytecode, args });
+      const estimate = await pc.estimateGas({ account: wallet.account!, data });
       const gas = [(estimate * 12n) / 10n, 15_000_000n].reduce((a, c) => (a < c ? a : c));
-      console.log(`  factory deploy gas: estimate ${estimate}, limit ${gas}`);
-      const hash = await wallet.deployContract({
-        abi: consumerAccountFactoryAbi,
-        bytecode: consumerAccountFactoryBytecode,
-        args: [oracle],
-        gas,
-      });
+      console.log(`  ${label} deploy gas: estimate ${estimate}, limit ${gas}`);
+      const hash = await wallet.deployContract({ abi, bytecode, args, gas });
       const rcpt = await pc.waitForTransactionReceipt({ hash });
-      if (rcpt.status !== "success" || !rcpt.contractAddress) throw new Error(`factory deploy failed: ${hash}`);
+      if (rcpt.status !== "success" || !rcpt.contractAddress) throw new Error(`${label} deploy failed: ${hash}`);
       const result = await mirror().waitForContractResult(hash);
-      deployment.factory = rcpt.contractAddress;
-      deployment.factoryContractId = result.created_contract_ids[0] ?? result.contract_id ?? undefined;
-      console.log(`PASS deployed ConsumerAccountFactory ${deployment.factoryContractId} (${rcpt.contractAddress}) tx ${hash}`);
+      const contractId = result.created_contract_ids[0] ?? result.contract_id ?? undefined;
+      console.log(`PASS deployed ${label} ${contractId} (${rcpt.contractAddress}) tx ${hash}`);
+      return { address: rcpt.contractAddress, contractId };
+    };
+
+    // USD price oracle for session caps: Supra push feeds, unless PRICE_ORACLE points at another IPriceOracle.
+    const customOracle = process.env.PRICE_ORACLE as Address | undefined;
+    if (customOracle) {
+      deployment.oracle = { address: customOracle, kind: "custom", label: "PRICE_ORACLE from .env" };
+    } else if (!deployment.oracle || deployment.oracle.kind !== "supra-push") {
+      const assets = SUPRA.assets.map(a => a.asset);
+      const pairs = SUPRA.assets.map(a => a.pairIndex);
+      const decimals = SUPRA.assets.map(a => a.decimals);
+      const o = await deploy("SupraPriceOracle", supraPriceOracleAbi, supraPriceOracleBytecode, [
+        SUPRA.feed,
+        SUPRA.maxAgeSeconds,
+        assets,
+        pairs,
+        decimals,
+      ]);
+      deployment.oracle = {
+        address: o.address,
+        kind: "supra-push",
+        label: `Supra push feed ${SUPRA.feed}: ${SUPRA.assets.map(a => `${a.label}→${a.pair}(${a.pairIndex})`).join(", ")}; max age ${SUPRA.maxAgeSeconds}s`,
+        contractId: o.contractId,
+      };
+    }
+
+    // Factory: new accounts take the factory's default oracle, so redeploy if it does not match.
+    if (deployment.factory) {
+      const current = await pc.readContract({
+        address: deployment.factory,
+        abi: consumerAccountFactoryAbi,
+        functionName: "defaultOracle",
+      });
+      if (current.toLowerCase() !== deployment.oracle.address.toLowerCase()) {
+        console.log(`  factory default oracle ${current} != ${deployment.oracle.address}; deploying a new factory`);
+        deployment.factory = undefined;
+      }
+    }
+    if (!deployment.factory) {
+      const f = await deploy("ConsumerAccountFactory", consumerAccountFactoryAbi, consumerAccountFactoryBytecode, [
+        deployment.oracle.address,
+      ]);
+      deployment.factory = f.address;
+      deployment.factoryContractId = f.contractId;
     }
 
     // HCS audit topic: only the sponsor key can submit.

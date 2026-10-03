@@ -4,6 +4,7 @@ pragma solidity ^0.8.24;
 import { ERC20 } from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import { IPriceOracle } from "../../contracts/interfaces/IPriceOracle.sol";
 import { IHederaTokenService } from "../../contracts/interfaces/IHederaTokenService.sol";
+import { ISupraSValueFeed } from "../../contracts/interfaces/ISupraSValueFeed.sol";
 
 /// Test-only. Plain ERC-20 standing in for the HTS ERC-20 facade in local unit tests.
 contract MockERC20 is ERC20 {
@@ -124,5 +125,24 @@ contract MockSwapRouter {
         tokenIn.transferFrom(msg.sender, address(this), amountIn);
         tokenOut.mint(p.recipient, uint256(int256(p.amountOut) + deliverSkew));
         if (ignoreMax) return p.amountInMaximum + 1;
+    }
+}
+
+/// Test-only. Settable Supra push-feed storage; never used by testnet proofs.
+contract MockSupraFeed is ISupraSValueFeed {
+    mapping(uint256 => priceFeed) internal _feeds;
+    bool public reverts;
+
+    function set(uint256 pairIndex, uint256 price, uint256 decimals, uint256 timeMs) external {
+        _feeds[pairIndex] = priceFeed({ round: timeMs, decimals: decimals, time: timeMs, price: price });
+    }
+
+    function setReverts(bool r) external {
+        reverts = r;
+    }
+
+    function getSvalue(uint256 pairIndex) external view returns (priceFeed memory) {
+        require(!reverts, "feed down");
+        return _feeds[pairIndex];
     }
 }
