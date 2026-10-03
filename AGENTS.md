@@ -2,137 +2,67 @@
 
 Briefing for coding agents working in this repository.
 
-This is a Scaffold-HBAR dApp: Next.js App Router, wallet connect, Debug Contracts, and Hedera networks (testnet, mainnet, local fork). The CLI may have left only Hardhat or only Foundry.
-
-Use the package manager this project was created with (`packageManager` in the root `package.json`, or the lockfile). Examples use `yarn`; if the app was created with npm, swap `yarn <script>` for `npm run <script>`.
-
-## Which Solidity package
-
-- `packages/hardhat` exists → Hardhat (`hardhat-deploy`)
-- `packages/foundry` exists → Foundry (Forge scripts)
-- `packages/nextjs` is always the frontend (App Router, RainbowKit, Wagmi, Viem, DaisyUI)
-
-Follow only the flavor that is present.
-
-## Commands
-
-Package-prefixed scripts for package-specific work. Keep only truly cross-workspace commands unprefixed.
-
-```bash
-# Local chain + deploy + frontend (separate terminals)
-yarn hardhat:chain    # Hedera-forked Hardhat node on 8545
-yarn hardhat:deploy --network localhost
-yarn foundry:chain    # Anvil from the Foundry package
-yarn foundry:deploy
-yarn next:start       # http://localhost:3000
-
-# Frontend only
-yarn next:dev
-
-# Quality / build
-yarn lint
-yarn format
-yarn next:build
-yarn hardhat:compile
-yarn foundry:compile
-
-# Live networks
-yarn hardhat:deploy --network hederaTestnet   # or hederaMainnet
-yarn foundry:deploy --network hedera_testnet  # or hedera_mainnet
-yarn hardhat:verify -- HederaToken testnet [0xAddress]
-yarn foundry:verify:testnet
-
-# Deployer account
-yarn hardhat:account:generate
-yarn hardhat:account:import
-yarn hardhat:account
-```
-
-`yarn hardhat:deploy` without `--network localhost` targets the in-process `hardhat` network, not the long-running fork.
+Scaffold-HBAR Consumer: programmable ConsumerAccounts with sponsored execution, payments, HIP-904 delivery, SaucerSwap swap-to-pay and policy-constrained agent sessions, on Hedera testnet. Yarn workspaces, Foundry only, Next.js App Router.
 
 ## Layout
 
-### Hardhat
-
-- Contracts: `packages/hardhat/contracts/`
-- Deploy scripts: `packages/hardhat/deploy/`
-- Tests: `packages/hardhat/test/`
-- Config: `packages/hardhat/hardhat.config.ts`
-- Tagged deploy: if `deployHederaToken.tags = ["HederaToken"]`, run `yarn hardhat:deploy --tags HederaToken`
-
-### Foundry
-
-- Contracts: `packages/foundry/contracts/`
-- Deploy scripts: `packages/foundry/script/` (`Deploy.s.sol`, `DeployHederaToken.s.sol`, `DeployHtsTokenCreator.s.sol`)
-- Tests: `packages/foundry/test/`
-- Config: `packages/foundry/foundry.toml`
-- One contract: `yarn foundry:deploy --file DeployHederaToken.s.sol`
-
-### After deploy
-
-ABIs and addresses are written to `packages/nextjs/contracts/deployedContracts.ts`. Put third-party contracts in `packages/nextjs/contracts/externalContracts.ts`.
-
-Sample contracts on this starter: `HederaToken` (ERC-20) and `HtsTokenCreator` (HTS precompile at `0x167`).
-
-## Frontend contract interaction
-
-Hooks live in `packages/nextjs/hooks/scaffold-hbar`. Use the names that exist in the codebase:
-
-- `useScaffoldReadContract` — not `useScaffoldContractRead`
-- `useScaffoldWriteContract` — not `useScaffoldContractWrite`
-
-Also: `useScaffoldWatchContractEvent`, `useScaffoldEventHistory`, `useDeployedContractInfo`, `useScaffoldContract`, `useTransactor`.
-
-```typescript
-const { data: balance } = useScaffoldReadContract({
-  contractName: "HederaToken",
-  functionName: "balanceOf",
-  args: [connectedAddress],
-});
-
-const { writeContractAsync, isPending } = useScaffoldWriteContract({
-  contractName: "HederaToken",
-});
-
-await writeContractAsync({
-  functionName: "mint",
-  args: [connectedAddress, parseEther("1")],
-});
-```
-
-`HederaToken.mint` is `onlyOwner`. For HTS creation, `HtsTokenCreator.createToken` is payable (HTS fee via `msg.value`) and emits `TokenCreated`.
-
-### UI
-
-Use `@scaffold-hbar-ui/components` for web3 UI: `Address`, `AddressInput`, `Balance`, `EtherInput`, `IntegerInput`.
-
-Use DaisyUI classes, not raw Tailwind when a DaisyUI component exists:
-
-```tsx
-<button className="btn btn-primary">Connect</button>
-```
-
-### Networks
-
-- Hardhat: `packages/hardhat/hardhat.config.ts` (`hederaTestnet` 296, `hederaMainnet` 295)
-- Foundry: `packages/foundry/foundry.toml` (`hedera_testnet`, `hedera_mainnet`)
-- Next.js: `packages/nextjs/scaffold.config.ts` (target networks, polling, RPC overrides, WalletConnect)
-
-## Style
-
-| Style | Use |
+| Path | What |
 | --- | --- |
-| `UpperCamelCase` | types, components |
-| `lowerCamelCase` | variables, functions |
-| `CONSTANT_CASE` | constants |
-| `snake_case` | Hardhat deploy files and Foundry scripts |
+| `packages/foundry/contracts` | `ConsumerAccount.sol`, `ConsumerAccountFactory.sol`, `Actions.sol`, `interfaces/` |
+| `packages/foundry/test` | Foundry tests; `test/mocks/Mocks.sol` holds test-only `Mock*` contracts |
+| `packages/sdk/src` | Framework-independent SDK. `abi.ts` is generated (`yarn sdk:abis`) — never edit by hand |
+| `packages/sdk/deployments/testnet.json` | Public deployment artifact written by `yarn bootstrap` |
+| `packages/relayer/src` | `Sponsor` pipeline, HCS auditor, standalone server |
+| `packages/nextjs` | Consumer app; API routes in `app/api/{sponsor,agent}` reuse `@sh/relayer` |
+| `scripts` | `doctor.ts`, `bootstrap.ts`, `prove-testnet.ts` |
+| `docs` | Build state, decisions, sources, open questions, interfaces, invariants, gotchas |
 
-Next.js imports use the `~~` alias:
+## Commands
 
-```tsx
-import { useTargetNetwork } from "~~/hooks/scaffold-hbar";
+```bash
+yarn doctor                 # environment + live testnet checks
+yarn bootstrap [--fund]     # dry run, or create accounts / deploy / create topic
+yarn prove:testnet          # testnet evidence → TESTNET_VERIFICATION.md
+yarn start                  # frontend dev server
+yarn test                   # contracts + SDK + relayer
+yarn redteam                # policy/red-team Foundry suites
+yarn lint && yarn typecheck && yarn build
+yarn sdk:abis               # after changing contracts
 ```
 
-App Router pages live under `packages/nextjs/app/`. Add `"use client"` when the page uses hooks.
+## Invariants (do not weaken)
 
-Prefer `type` over `interface`. No `T` prefix on types. Let TypeScript infer when it can. Comments should add information.
+1. Session keys never get raw `target + value + calldata` authority.
+2. Admin functions are `onlySelf`; sessions cannot reach them.
+3. Every signature binds chain, account, nonce and expiry; nonces are single-use.
+4. Unpriceable session spend fails closed (`PriceUnavailable`).
+5. Every HTS response code is checked; raw owner calls to `0x167` are forbidden.
+6. The sponsor/relayer never gains authority over user funds.
+
+Full list with tests: `docs/SECURITY_INVARIANTS.md`.
+
+## Adding a typed action
+
+1. Add a stable ID to `Actions.sol` and the same preimage to `sdk/src/actions.ts` (`ACTION_IDS`).
+2. Define the `actionData` encoding (struct or tuple) and an SDK encoder/decoder with a round-trip test.
+3. Handle it in `ConsumerAccount.executeSessionAction`: decode, check targets against an owner-managed allowlist, price the worst-case spend with `_chargeSession`, execute, verify the outcome.
+4. Foundry tests: allowed path, each denial reason, owner path.
+5. Teach `packages/relayer/src/sponsor.ts` to summarise it for receipts/audit.
+6. Regenerate ABIs (`yarn sdk:abis`) and update `docs/CONTRACT_INTERFACES.md`.
+
+## Prohibited shortcuts
+
+- No mocks in `scripts/prove-testnet.ts`, `TESTNET_VERIFICATION.md` or UI success states.
+- No invented addresses, token IDs, ABIs or package versions — verify and record in `docs/SOURCES.md`.
+- No silent fallbacks: integration failures return typed errors (`SAUCERSWAP_QUOTE_UNAVAILABLE`, `HCS_AUDIT_FAILED`, …).
+- Never commit `.env` or put secrets in `NEXT_PUBLIC_*`.
+
+## Hedera pitfalls
+
+See `docs/HEDERA_GOTCHAS.md`: tinybars inside the EVM vs weibars over JSON-RPC, token association, WHBAR, long-zero vs alias addresses, Mirror Node lag, no system contracts on Anvil.
+
+## Frontend notes
+
+- `types/abitype/abi.d.ts` registers viem's `Address` as `string` app-wide; SDK serialisers accept plain strings for that reason.
+- The browser controller key (`services/consumer/controller.ts`) is a testnet adapter, not production custody.
+- Use DaisyUI components; prefer consumer copy ("Pay", "Fees sponsored") and keep protocol detail on the Developer page.

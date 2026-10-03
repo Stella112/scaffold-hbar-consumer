@@ -51,7 +51,15 @@
     "relayer:check-types": "yarn workspace @sh/relayer check-types",
     "doctor": "yarn workspace @sh/scripts doctor",
     "bootstrap": "yarn workspace @sh/scripts bootstrap",
-    "prove:testnet": "yarn workspace @sh/scripts prove:testnet"
+    "prove:testnet": "yarn workspace @sh/scripts prove:testnet",
+    "start": "yarn next:dev",
+    "build": "yarn next:build",
+    "typecheck": "yarn next:check-types && yarn sdk:check-types && yarn relayer:check-types && yarn workspace @sh/scripts check-types",
+    "test:contracts": "yarn foundry:test",
+    "test:integration": "yarn sdk:test && yarn relayer:test",
+    "test": "yarn test:contracts && yarn test:integration",
+    "redteam": "yarn workspace @sh/foundry test --match-contract \"SessionPolicyTest|X402ExecutorTest|SwapToPayTest|RecoveryTest\"",
+    "verify:all": "yarn lint && yarn typecheck && yarn test && yarn build"
   },
   "packageManager": "yarn@3.2.3",
   "devDependencies": {
