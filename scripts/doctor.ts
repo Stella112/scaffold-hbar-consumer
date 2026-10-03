@@ -127,7 +127,7 @@ await safe("price oracle", async () => {
   report(
     ok ? "PASS" : "FAIL",
     "price oracle",
-    ok ? `1 HBAR = ${(Number(usd6) / 1e6).toFixed(4)} (${o.kind})` : `${o.kind} returned ok=false (stale or unavailable): agent spend is denied`,
+    ok ? `1 HBAR = ${(Number(usd6) / 1e6).toFixed(4)} USD (${o.kind})` : `${o.kind} returned ok=false (stale or unavailable): agent spend is denied`,
   );
 });
 report("WARN", "x402 transferExecutor", "@x402/hedera@2.28.0 does not implement transferExecutor (docs/OPEN_QUESTIONS.md U9/U10)");

@@ -1,9 +1,9 @@
 {
   "network": "testnet",
   "chainId": 296,
-  "updatedAt": "2026-10-03T11:58:39.462Z",
-  "factory": "0xa5659e0f3bd8812a86f20e41cfdc1ce301d1c69a",
-  "factoryContractId": "0.0.10841522",
+  "updatedAt": "2026-10-03T16:53:58.438Z",
+  "factory": "0x713de8fa799ce7b7cf3182d6d58b31f31ea15726",
+  "factoryContractId": "0.0.10844783",
   "auditTopicId": "0.0.10841526",
   "tokens": {
     "USDC": {
@@ -29,5 +29,11 @@
     "router": "0x0000000000000000000000000000000000159398",
     "quoter": "0x00000000000000000000000000000000001535B2",
     "whbar": "0x0000000000000000000000000000000000003aD1"
+  },
+  "oracle": {
+    "address": "0x83be4e480cd0878a7bcb2e277323e8a48604b058",
+    "kind": "supra-push",
+    "label": "Supra push feed 0x6Cd59830AAD978446e6cc7f6cc173aF7656Fb917: HBAR→HBAR_USD(432), WHBAR→HBAR_USD(432), USDC→USDC_USD(89); max age 7200s",
+    "contractId": "0.0.10844780"
   }
 }
