@@ -8,6 +8,7 @@
       "packages/nextjs",
       "packages/sdk",
       "packages/relayer",
+      "packages/mcp",
       "scripts"
     ]
   },
@@ -61,7 +62,9 @@
     "redteam": "yarn workspace @sh/foundry test --match-contract \"SessionPolicyTest|X402ExecutorTest|SwapToPayTest|RecoveryTest\"",
     "verify:all": "yarn lint && yarn typecheck && yarn test && yarn build",
     "check:scaffold": "bash scripts/check-scaffold.sh",
-    "sponsor:fund": "yarn workspace @sh/scripts sponsor:fund"
+    "sponsor:fund": "yarn workspace @sh/scripts sponsor:fund",
+    "mcp:start": "yarn workspace @sh/mcp start",
+    "mcp:test": "yarn workspace @sh/mcp test"
   },
   "packageManager": "yarn@3.2.3",
   "devDependencies": {

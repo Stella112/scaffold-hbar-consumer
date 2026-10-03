@@ -1,0 +1,33 @@
+{
+  "name": "@sh/mcp",
+  "version": "0.1.0",
+  "private": true,
+  "description": "MCP server that lets an AI agent spend from a ConsumerAccount within its on-chain session allowance (sponsored payments, x402).",
+  "type": "module",
+  "main": "./src/server.ts",
+  "types": "./src/server.ts",
+  "exports": {
+    ".": "./src/server.ts"
+  },
+  "bin": {
+    "consumer-account-mcp": "./src/index.ts"
+  },
+  "scripts": {
+    "check-types": "tsc --noEmit",
+    "start": "tsx src/index.ts",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.0",
+    "@sh/sdk": "workspace:*",
+    "@x402/core": "2.28.0",
+    "tsx": "4.23.15",
+    "viem": "2.39.0",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.0",
+    "typescript": "5.9.3",
+    "vitest": "3.2.7"
+  }
+}

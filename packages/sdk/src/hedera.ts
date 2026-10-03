@@ -46,6 +46,14 @@ export function toAddress(value: string): Address {
   throw new Error(`not an EVM address or Hedera entity id: ${value}`);
 }
 
+/** "0.0.123@1700000000.000000001" → "0.0.123-1700000000-000000001" (Mirror Node / HashScan path form). */
+export const toMirrorTransactionId = (id: string): string => {
+  const [acct, ts] = id.split("@");
+  if (!ts) return id;
+  const [s, n] = ts.split(".");
+  return `${acct}-${s}-${n}`;
+};
+
 export const hashscanTx = (txId: string, network: HederaNetwork = HEDERA_TESTNET): string =>
   `${network.hashscan}/transaction/${txId}`;
 

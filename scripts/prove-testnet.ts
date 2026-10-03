@@ -35,6 +35,9 @@ import {
   resolveX402PayTo,
 } from "@sh/sdk";
 import { TransferExecutorFacilitator, createTestnetSponsor, loadRelayerConfig, toMirrorTransactionId } from "@sh/relayer";
+import { createConsumerMcpServer } from "@sh/mcp";
+import { Client as McpClient } from "@modelcontextprotocol/sdk/client/index.js";
+import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { x402Client } from "@x402/core/client";
 import { x402Facilitator } from "@x402/core/facilitator";
 import { decodePaymentSignatureHeader, encodePaymentSignatureHeader } from "@x402/core/http";
@@ -371,6 +374,84 @@ await flow(6, "x402 exact / transferExecutor payment by an agent session", async
   t.actual = `isValid=${tampered.isValid} ${tampered.invalidReason ?? ""}`;
   t.status = !tampered.isValid ? "PASS" : "FAIL";
   out.push(t);
+  return out;
+});
+
+await flow(7, "AI agent via MCP against the deployed app", async () => {
+  const appUrl = process.env.CONSUMER_APP_URL;
+  if (!appUrl) throw new Error("CONSUMER_APP_URL not set: flow needs a deployed app (sponsor + x402 endpoints)");
+  const mcpAgent = privateKeyToAccount(generatePrivateKey());
+  const grant = await ownerSend([
+    selfCall.grantSession(account, {
+      key: mcpAgent.address,
+      expiresAt: BigInt(Math.floor(Date.now() / 1000) + 3600),
+      perCallCapUsd6: 1_000_000n,
+      dailyCapUsd6: 3_000_000n,
+      allowedActions: [ACTION_IDS.payment, ACTION_IDS.x402Payment],
+      allowedRecipients: [],
+    }),
+  ]);
+  if (grant.status !== "success") throw new Error(`MCP session grant denied: ${grant.reasonCode}`);
+
+  const server = createConsumerMcpServer({ account, agent: mcpAgent, appUrl });
+  const [serverSide, clientSide] = InMemoryTransport.createLinkedPair();
+  const client = new McpClient({ name: "prove-testnet", version: "0.1.0" });
+  await Promise.all([server.connect(serverSide), client.connect(clientSide)]);
+  const call = async (name: string, args: Record<string, unknown> = {}) => {
+    const r = await client.callTool({ name, arguments: args });
+    return { isError: r.isError === true, out: JSON.parse((r.content as { text: string }[])[0]!.text) as Record<string, any> };
+  };
+  const base = (step: string, input: string, expected: string): Evidence => ({
+    flow: 7,
+    step,
+    featureStatus: "VERIFIED_TESTNET",
+    timestamp: now(),
+    actor: `${mcpAgent.address} (session key held by the MCP server)`,
+    account,
+    contract: null,
+    asset: "HBAR",
+    input,
+    expected,
+    actual: "",
+    transactionHash: null,
+    transactionId: null,
+    mirrorQuery: null,
+    mirrorResult: null,
+    hcs: null,
+    status: "FAIL",
+  });
+  const out: Evidence[] = [];
+
+  const allowance = await call("get_allowance");
+  const a = base("MCP get_allowance", "tool get_allowance", "caps $1.00 / $3.00 and a live HBAR price");
+  a.actual = JSON.stringify(allowance.out);
+  a.status = !allowance.isError && allowance.out.perPaymentCap === "$1.00" && /^\$0\.\d+/.test(String(allowance.out.hbarUsd)) ? "PASS" : "FAIL";
+  out.push(a);
+
+  const merchantBefore = (await M.getHbarBalance(roles.MERCHANT_ACCOUNT_ID)).tinybars;
+  const pay = await call("pay", { to: roles.MERCHANT_ACCOUNT_ID, amount: "0.2", asset: "HBAR" });
+  await new Promise(r => setTimeout(r, 6000));
+  const delta = (await M.getHbarBalance(roles.MERCHANT_ACCOUNT_ID)).tinybars - merchantBefore;
+  const p = base("MCP pay (sponsored by the deployed app)", `tool pay { to: ${roles.MERCHANT_ACCOUNT_ID}, amount: 0.2 HBAR }`, "success; merchant +20000000 tinybars");
+  p.transactionId = pay.out.transactionId ?? null;
+  p.actual = `status=${pay.out.status} ${pay.out.reasonCode ?? ""}; merchant delta=${delta}`;
+  p.status = pay.out.status === "success" && delta === 20_000_000n ? "PASS" : "FAIL";
+  out.push(p);
+
+  const over = await call("pay", { to: roles.MERCHANT_ACCOUNT_ID, amount: "50", asset: "HBAR" });
+  const o = base("MCP pay over the cap", "tool pay { amount: 50 HBAR } (≈ $5 > $1 cap)", "denied PER_CALL_CAP_EXCEEDED, reason returned to the model");
+  o.actual = `isError=${over.isError} status=${over.out.status} ${over.out.reasonCode ?? ""}`;
+  o.status = over.isError && over.out.reasonCode === "PER_CALL_CAP_EXCEEDED" ? "PASS" : "FAIL";
+  out.push(o);
+
+  const paid = await call("fetch_paid_resource", { url: `${appUrl.replace(/\/$/, "")}/api/x402/premium`, maxHbar: "0.1" });
+  const x = base("MCP fetch_paid_resource (x402 over HTTP)", "tool fetch_paid_resource { url: /api/x402/premium }", "402 → paid → 200 with live HBAR/USD data");
+  x.transactionId = paid.out.settlement?.transaction ?? null;
+  x.mirrorQuery = x.transactionId ? `${HEDERA_TESTNET.mirrorUrl}/transactions/${toMirrorTransactionId(x.transactionId)}` : null;
+  x.actual = `status=${paid.out.status} paid=${paid.out.paid} data=${JSON.stringify(paid.out.body).slice(0, 160)}`;
+  x.status = paid.out.status === 200 && paid.out.paid === true && typeof paid.out.body?.hbarUsd === "number" ? "PASS" : "FAIL";
+  out.push(x);
+  await client.close();
   return out;
 });
 

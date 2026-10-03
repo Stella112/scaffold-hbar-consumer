@@ -26,6 +26,7 @@ import {
   isEntityId,
   x402AssetToAddress,
   resolveX402PayTo,
+  toMirrorTransactionId,
 } from "@sh/sdk";
 import type { Auditor } from "./audit";
 
@@ -328,13 +329,7 @@ const payerOf = (payload: PaymentPayload): string | undefined => {
   return typeof p === "string" ? p : undefined;
 };
 
-/** "0.0.123@1700000000.000000001" → "0.0.123-1700000000-000000001" (Mirror Node path form). */
-export const toMirrorTransactionId = (id: string): string => {
-  const [acct, ts] = id.split("@");
-  if (!ts) return id;
-  const [s, n] = ts.split(".");
-  return `${acct}-${s}-${n}`;
-};
+export { toMirrorTransactionId };
 
 /**
  * Settlement conformance over parent + child records (spec phase 4.3): payTo is credited exactly `amount` of
