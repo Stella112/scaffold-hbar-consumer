@@ -5,7 +5,7 @@
  * TESTNET_VERIFICATION.md from observed results only. A flow that fails is recorded as FAIL with the error;
  * nothing is filled in by hand.
  */
-import { type Address, type Hex, parseAbi, zeroHash } from "viem";
+import { type Address, type Hex, decodeEventLog, parseAbi, zeroHash } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import {
   ACTION_IDS,
@@ -14,6 +14,7 @@ import {
   RESERVED_ACTION_IDS,
   type Receipt,
   ConsumerAccountReader,
+  longZeroToEntityId,
   buildOwnerIntent,
   buildSessionAction,
   decodeRevertData,
@@ -114,7 +115,11 @@ function fromReceipt(flow: number, step: string, r: Receipt, extra: Partial<Evid
   };
 }
 
+// PROVE_FLOWS=1,2,10 runs a subset (later flows depend on the account from flow 1 and funds from flow 2).
+const only = process.env.PROVE_FLOWS ? new Set(process.env.PROVE_FLOWS.split(",").map(Number)) : null;
+
 async function flow(n: number, step: string, fn: () => Promise<Evidence | Evidence[]>) {
+  if (only && !only.has(n)) return;
   console.log(`\n▶ ${n}. ${step}`);
   try {
     const e = await fn();
@@ -572,15 +577,23 @@ await flow(10, "Recurring payment executed by the Hedera Schedule Service", asyn
   }
   await new Promise(res => setTimeout(res, 6000));
   const delta = (await M.getHbarBalance(roles.MERCHANT_ACCOUNT_ID)).tinybars - merchantBefore;
-  const contract = await M.getContract(account);
-  const schedules = contract
-    ? await M.get<{ schedules: { schedule_id: string; executed_timestamp: string | null; creator_account_id: string }[] }>(
-        `/schedules?account.id=${contract.contract_id}&order=desc&limit=10`,
-      )
-    : { schedules: [] };
-  const executed = schedules.schedules.filter(s => s.executed_timestamp);
-  e.mirrorQuery = contract ? `${HEDERA_TESTNET.mirrorUrl}/schedules?account.id=${contract.contract_id}&order=desc` : null;
-  e.mirrorResult = `${schedules.schedules.length} schedules created by the account, ${executed.length} executed: ${executed.map(s => s.schedule_id).join(", ")}`;
+  // The account's own SubscriptionScheduled events name every HSS schedule it created; check each on Mirror Node.
+  const scheduledEvent = parseAbi(["event SubscriptionScheduled(uint256 indexed id, address schedule, uint64 at)"]);
+  const logs = await M.get<{ logs: { data: Hex; topics: Hex[] }[] }>(`/contracts/${account}/results/logs?order=asc&limit=50`);
+  const scheduleIds = logs.logs.flatMap(l => {
+    try {
+      const ev = decodeEventLog({ abi: scheduledEvent, data: l.data, topics: l.topics as [Hex, ...Hex[]] });
+      return [longZeroToEntityId(ev.args.schedule) ?? ev.args.schedule];
+    } catch {
+      return [];
+    }
+  });
+  const schedules = await Promise.all(
+    scheduleIds.map(id => M.get<{ schedule_id: string; executed_timestamp: string | null; payer_account_id: string }>(`/schedules/${id}`)),
+  );
+  const executed = schedules.filter(s => s.executed_timestamp);
+  e.mirrorQuery = scheduleIds.map(id => `${HEDERA_TESTNET.mirrorUrl}/schedules/${id}`).join(" ");
+  e.mirrorResult = `${schedules.length} HSS schedules created by the account (SubscriptionScheduled events), ${executed.length} executed: ${executed.map(s => `${s.schedule_id} @${s.executed_timestamp} payer ${s.payer_account_id}`).join(", ")}`;
   e.actual += `; remaining=${sub.remaining}; merchant delta=${delta}`;
   e.status = sub.remaining === 0 && delta === 2n * amount && executed.length >= 2 ? "PASS" : "FAIL";
   return e;
