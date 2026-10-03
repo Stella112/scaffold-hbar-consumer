@@ -13,6 +13,14 @@ export const hederaTestnetChain = (rpcUrl: string) =>
     nativeCurrency: { name: "HBAR", symbol: "HBAR", decimals: 18 },
     rpcUrls: { default: { http: [rpcUrl] } },
     blockExplorers: { default: { name: "HashScan", url: HEDERA_TESTNET.hashscan } },
+    // viem's EIP-1559 estimate can come out far below the relay's minimum ("Gas price '99' is below configured
+    // minimum"). Hedera charges its own network gas price, so always quote eth_gasPrice for both fields.
+    fees: {
+      async estimateFeesPerGas({ client, type }) {
+        const gasPrice = BigInt(await client.request({ method: "eth_gasPrice" }));
+        return type === "legacy" ? { gasPrice } : { maxFeePerGas: gasPrice, maxPriorityFeePerGas: gasPrice };
+      },
+    },
   });
 
 /** Wires a testnet Sponsor from validated configuration and the public deployment artifact. */
