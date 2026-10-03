@@ -60,6 +60,9 @@ const MIN_VALIDITY_SECONDS = 10n;
 const GAS_HEADROOM_NUM = 13n;
 const GAS_HEADROOM_DEN = 10n;
 const MIN_GAS = 150_000n;
+// eth_estimateGas does not model HIP-904: the HTS system call converts the airdrop fee (incl. the pending-airdrop
+// charge for unassociated receivers) into gas at execution time. Observed: 150k limit → INSUFFICIENT_GAS from 0x167.
+const AIRDROP_MIN_GAS = 1_500_000n;
 const MAX_GAS = 6_000_000n;
 
 type Prepared = {
@@ -295,7 +298,8 @@ export class Sponsor {
   private async estimateGas(p: Prepared): Promise<bigint> {
     const est = await this.d.publicClient.estimateGas({ account: this.d.walletClient.account, to: p.to, data: p.data });
     const padded = (est * GAS_HEADROOM_NUM) / GAS_HEADROOM_DEN;
-    return padded < MIN_GAS ? MIN_GAS : padded > MAX_GAS ? MAX_GAS : padded;
+    const floor = p.action === "airdrop" ? AIRDROP_MIN_GAS : MIN_GAS;
+    return padded < floor ? floor : padded > MAX_GAS ? MAX_GAS : padded;
   }
 
   private async verify(
