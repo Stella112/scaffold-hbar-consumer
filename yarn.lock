@@ -3076,7 +3076,7 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@sh/relayer@workspace:packages/relayer":
+"@sh/relayer@workspace:*, @sh/relayer@workspace:packages/relayer":
   version: 0.0.0-use.local
   resolution: "@sh/relayer@workspace:packages/relayer"
   dependencies:
@@ -3087,6 +3087,22 @@ __metadata:
     typescript: 5.9.3
     viem: 2.39.0
     vitest: 3.2.7
+    zod: 4.6.5
+  languageName: unknown
+  linkType: soft
+
+"@sh/scripts@workspace:scripts":
+  version: 0.0.0-use.local
+  resolution: "@sh/scripts@workspace:scripts"
+  dependencies:
+    "@hiero-ledger/sdk": 2.89.1
+    "@sh/relayer": "workspace:*"
+    "@sh/sdk": "workspace:*"
+    "@types/node": ^20.19.0
+    dotenv: 18.0.5
+    tsx: 4.23.15
+    typescript: 5.9.3
+    viem: 2.39.0
     zod: 4.6.5
   languageName: unknown
   linkType: soft
@@ -6462,6 +6478,15 @@ __metadata:
   dependencies:
     esutils: ^2.0.2
   checksum: a45e277f7feaed309fe658ace1ff286c6e2002ac515af0aaf37145b8baa96e49899638c7cd47dccf84c3d32abfc113246625b3ac8f552d1046072adee13b0dc8
+  languageName: node
+  linkType: hard
+
+"dotenv@npm:18.0.5":
+  version: 18.0.5
+  resolution: "dotenv@npm:18.0.5"
+  bin:
+    dotenv: dist/index.cjs
+  checksum: 96edde25eb7d28e54cfa1f78041be7d20122a8bf94c6bcc407ae34e3c6534b761a4091a6d180f290b59a5b2de1f0f4ad8ffaf4892b6b8400f5d9cf83ffb59849
   languageName: node
   linkType: hard
 

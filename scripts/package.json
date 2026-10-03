@@ -1,0 +1,27 @@
+{
+  "name": "@sh/scripts",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Operational TypeScript scripts: doctor, bootstrap, testnet proofs, action generator.",
+  "type": "module",
+  "scripts": {
+    "doctor": "tsx doctor.ts",
+    "bootstrap": "tsx bootstrap.ts",
+    "prove:testnet": "tsx prove-testnet.ts",
+    "new:action": "tsx new-action.ts",
+    "check-types": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@hiero-ledger/sdk": "2.89.1",
+    "@sh/relayer": "workspace:*",
+    "@sh/sdk": "workspace:*",
+    "dotenv": "18.0.5",
+    "tsx": "4.23.15",
+    "viem": "2.39.0",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.0",
+    "typescript": "5.9.3"
+  }
+}

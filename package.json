@@ -7,7 +7,8 @@
       "packages/foundry",
       "packages/nextjs",
       "packages/sdk",
-      "packages/relayer"
+      "packages/relayer",
+      "scripts"
     ]
   },
   "scripts": {
@@ -47,7 +48,10 @@
     "sdk:check-types": "yarn workspace @sh/sdk check-types",
     "relayer:start": "yarn workspace @sh/relayer start",
     "relayer:test": "yarn workspace @sh/relayer test",
-    "relayer:check-types": "yarn workspace @sh/relayer check-types"
+    "relayer:check-types": "yarn workspace @sh/relayer check-types",
+    "doctor": "yarn workspace @sh/scripts doctor",
+    "bootstrap": "yarn workspace @sh/scripts bootstrap",
+    "prove:testnet": "yarn workspace @sh/scripts prove:testnet"
   },
   "packageManager": "yarn@3.2.3",
   "devDependencies": {
