@@ -1,5 +1,33 @@
 {
   "network": "testnet",
   "chainId": 296,
-  "updatedAt": null
+  "updatedAt": "2026-10-03T11:58:39.462Z",
+  "factory": "0xa5659e0f3bd8812a86f20e41cfdc1ce301d1c69a",
+  "factoryContractId": "0.0.10841522",
+  "auditTopicId": "0.0.10841526",
+  "tokens": {
+    "USDC": {
+      "tokenId": "0.0.5449",
+      "decimals": 6,
+      "symbol": "USDC",
+      "address": "0x0000000000000000000000000000000000001549"
+    },
+    "WHBAR": {
+      "tokenId": "0.0.15058",
+      "decimals": 8,
+      "symbol": "WHBAR",
+      "address": "0x0000000000000000000000000000000000003aD2"
+    },
+    "SAUCE": {
+      "tokenId": "0.0.1183558",
+      "decimals": 6,
+      "symbol": "SAUCE",
+      "address": "0x0000000000000000000000000000000000120f46"
+    }
+  },
+  "saucerswap": {
+    "router": "0x0000000000000000000000000000000000159398",
+    "quoter": "0x00000000000000000000000000000000001535B2",
+    "whbar": "0x0000000000000000000000000000000000003aD1"
+  }
 }
