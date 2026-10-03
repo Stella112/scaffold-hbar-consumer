@@ -48,15 +48,18 @@ export type SponsorStatus = {
 
 const str = (v: bigint) => v.toString();
 
-/** Serialisers from SDK types to the wire format (bigint → string). */
+/**
+ * Serialisers from SDK types to the wire format (bigint → string). Address/hex params are plain strings because
+ * some apps register viem's Address as `string`; the relayer validates every field with sponsorRequestSchema.
+ */
 export const toSponsorRequest = {
-  createAccount: (chainId: number, owner: `0x${string}`, salt: `0x${string}`): SponsorRequest => ({
+  createAccount: (chainId: number, owner: string, salt: string): SponsorRequest => ({
     kind: "create-account",
     chainId,
     owner,
     salt,
   }),
-  ownerIntent: (chainId: number, account: `0x${string}`, intent: OwnerIntent, signature: `0x${string}`): SponsorRequest => ({
+  ownerIntent: (chainId: number, account: string, intent: OwnerIntent, signature: string): SponsorRequest => ({
     kind: "owner-intent",
     chainId,
     account,
@@ -69,9 +72,9 @@ export const toSponsorRequest = {
   }),
   sessionAction: (
     chainId: number,
-    account: `0x${string}`,
+    account: string,
     action: SessionAction,
-    signature: `0x${string}`,
+    signature: string,
   ): SponsorRequest => ({
     kind: "session-action",
     chainId,

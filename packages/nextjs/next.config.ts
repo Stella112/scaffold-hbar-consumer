@@ -4,6 +4,10 @@ import path from "path";
 const nextConfig: NextConfig = {
   outputFileTracingRoot: path.join(__dirname, "../.."),
   reactStrictMode: true,
+  // Workspace packages ship TypeScript source.
+  transpilePackages: ["@sh/sdk", "@sh/relayer"],
+  // Native Hedera SDK runs only in API routes (sponsor relayer, HCS audit).
+  serverExternalPackages: ["@hiero-ledger/sdk"],
   devIndicators: false,
   typescript: {
     ignoreBuildErrors: process.env.NEXT_PUBLIC_IGNORE_BUILD_ERROR === "true",
