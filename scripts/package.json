@@ -9,7 +9,8 @@
     "bootstrap": "tsx bootstrap.ts",
     "prove:testnet": "tsx prove-testnet.ts",
     "new:action": "tsx new-action.ts",
-    "check-types": "tsc --noEmit"
+    "check-types": "tsc --noEmit",
+    "sponsor:fund": "tsx fund-sponsor.ts"
   },
   "dependencies": {
     "@hiero-ledger/sdk": "2.89.1",

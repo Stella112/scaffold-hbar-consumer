@@ -60,7 +60,8 @@
     "test": "yarn test:contracts && yarn test:integration",
     "redteam": "yarn workspace @sh/foundry test --match-contract \"SessionPolicyTest|X402ExecutorTest|SwapToPayTest|RecoveryTest\"",
     "verify:all": "yarn lint && yarn typecheck && yarn test && yarn build",
-    "check:scaffold": "bash scripts/check-scaffold.sh"
+    "check:scaffold": "bash scripts/check-scaffold.sh",
+    "sponsor:fund": "yarn workspace @sh/scripts sponsor:fund"
   },
   "packageManager": "yarn@3.2.3",
   "devDependencies": {

@@ -115,6 +115,14 @@ await safe("saucerswap v2", async () => {
   );
 });
 
+await safe("sponsor balance", async () => {
+  const id = process.env.SPONSOR_ACCOUNT_ID;
+  if (!id) return report("WARN", "sponsor balance", "no sponsor yet — run `yarn bootstrap --fund`");
+  const { tinybars } = await m.getHbarBalance(id);
+  // An account deployment reserves ~6M gas at the relay minimum price; below ~20 HBAR sponsorship starts failing.
+  report(tinybars < 2_000_000_000n ? "WARN" : "PASS", "sponsor balance", `${id} ${(Number(tinybars) / 1e8).toFixed(2)} HBAR${tinybars < 2_000_000_000n ? " — low: `yarn sponsor:fund 100 --fund`" : ""}`);
+});
+
 await safe("price oracle", async () => {
   const o = testnetDeployment.oracle;
   if (!o) return report("WARN", "price oracle", "none configured: session spend fails closed (PRICE_UNAVAILABLE)");

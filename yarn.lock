@@ -3051,6 +3051,7 @@ __metadata:
     "@trivago/prettier-plugin-sort-imports": ^4.3.0
     "@types/node": ^18.19.50
     "@types/react": ^19.0.7
+    "@x402/core": 2.28.0
     abitype: 1.0.6
     blo: ^1.2.0
     burner-connector: 0.0.20
