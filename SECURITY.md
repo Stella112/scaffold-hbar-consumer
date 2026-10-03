@@ -45,9 +45,11 @@ Session spend is priced in USD (6 decimals) through `IPriceOracle`. No oracle, a
 ## HTS / HSS caveats
 
 - HTS system-contract calls return response codes; every call is checked (`HtsCallFailed`).
-- Recipients must be associated to receive tokens; unassociated recipients get HIP-904 pending airdrops (fees charged to the submitter, i.e. the sponsor).
+- Recipients must be associated to receive tokens; unassociated recipients get HIP-904 pending airdrops. The airdrop fee is charged to the calling contract's own HBAR (the sponsor pays only gas); see the known limitation below.
 - Swap-to-pay checks the recipient's balance increased by at least `amountOut` and that no more than `amountInMaximum` was spent; the router approval is reset to zero afterwards.
-- HSS scheduled payments are not implemented in this version.
+- HSS recurring payments: creation and cancellation are owner-only; `executeSubscription` is permissionless but can only pay the owner-configured recipient and amount, once due. Scheduled executions are paid by the account (~2M gas each).
+- Savings vault: sessions may only deposit (`vault-deposit`, USD-capped, owner-allowlisted vaults). Shares of any vault ever allowed are untransferable for sessions through every action (`WithdrawForbidden`).
+- Launchpad tokens are created with no keys and a fixed supply; graduation pays the creator once; claims fund their own airdrop fee.
 
 ## Known limitation: airdrop fees are outside session caps
 
