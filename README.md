@@ -1,6 +1,6 @@
 # Scaffold-HBAR Consumer
 
-**A Scaffold-HBAR template for programmable Hedera accounts: users pay with zero HBAR (a sponsor covers fees), request money by QR/link, swap-to-pay through SaucerSwap, deliver tokens to unassociated recipients with HIP-904, and give AI agents spending allowances that the account enforces on-chain — with every policy decision audited to HCS.**
+**A Scaffold-HBAR template for programmable Hedera accounts: users pay with zero HBAR (a sponsor covers fees), request money by QR/link, swap-to-pay through SaucerSwap, deliver tokens to unassociated recipients with HIP-904, schedule recurring payments with the Hedera Schedule Service, and give AI agents USD-capped allowances (priced live by Supra) that the account enforces on-chain — usable over x402 and MCP, with every policy decision audited to HCS.**
 
 ```bash
 npx create-scaffold-hbar@latest --template Stella112/scaffold-hbar-consumer
@@ -23,12 +23,15 @@ npx create-scaffold-hbar@latest --template Stella112/scaffold-hbar-consumer
 | 3 | Direct HTS token payment (WHBAR) |
 | 4 | **SaucerSwap swap-to-pay**: account holds WHBAR, merchant receives *exactly* the requested USDC |
 | 5 | **HIP-904**: token sent to an intentionally unassociated recipient lands as a pending airdrop |
-| 8 | Agent red team: withdraw / escalate / unknown action / wrong recipient are denied with reason codes and HCS records |
+| 6 | **x402** `exact` / `transferExecutor`: an agent session pays a 402 resource; replay and amount tampering are rejected |
+| 7 | **AI agent via MCP** against the deployed app: allowance, sponsored payment, cap denial returned to the model, x402 purchase |
+| 8 | Agent pays within live **Supra**-priced USD caps; over-cap, withdraw, escalate, unknown action and wrong recipient are denied with reason codes and HCS records |
 | 9 | Raw-call bypass: denied by the relayer *and* reverted on-chain when submitted directly, with a correlated HCS denial |
+| 10 | **Recurring payment** created once by the owner and executed twice by the **Hedera Schedule Service** with no further transactions |
 
-All flows above pass in the committed [`TESTNET_VERIFICATION.md`](TESTNET_VERIFICATION.md) (run 2026-10-03). Nothing in it is hand-written.
+Results are in the committed [`TESTNET_VERIFICATION.md`](TESTNET_VERIFICATION.md). Nothing in it is hand-written.
 
-Reference testnet deployment: ConsumerAccountFactory [0.0.10841522](https://hashscan.io/testnet/contract/0.0.10841522), HCS audit topic [0.0.10841526](https://hashscan.io/testnet/topic/0.0.10841526), sponsor [0.0.10841387](https://hashscan.io/testnet/account/0.0.10841387).
+Reference testnet deployment (source verified on Sourcify): ConsumerAccountFactory [0.0.10845379](https://hashscan.io/testnet/contract/0.0.10845379), SupraPriceOracle [0.0.10844780](https://hashscan.io/testnet/contract/0.0.10844780), HCS audit topic [0.0.10841526](https://hashscan.io/testnet/topic/0.0.10841526), sponsor [0.0.10841387](https://hashscan.io/testnet/account/0.0.10841387).
 
 ## Quickstart
 
@@ -56,11 +59,12 @@ agent session key  ──signs typed action─┘     │  validate · dedupe ·
 
 | Package | Role |
 | --- | --- |
-| `packages/foundry` | `ConsumerAccount`, `ConsumerAccountFactory`, typed `Actions`, interfaces, 60 Foundry tests |
+| `packages/foundry` | `ConsumerAccount` (+ HSS subscriptions), `ConsumerAccountFactory`, `SupraPriceOracle`, typed `Actions`, 87 Foundry tests |
 | `packages/sdk` | Framework-independent TypeScript: EIP-712 intents, typed action codecs, payment requests, reason codes, Mirror client, receipts, generated ABIs |
-| `packages/relayer` | Sponsor pipeline (`Sponsor` class) + standalone HTTP server + HCS auditor |
-| `packages/nextjs` | Consumer app: Home, Pay, Request, Activity, Agent, Sponsor, Developer; API routes reuse `@sh/relayer` |
-| `scripts` | `doctor`, `bootstrap`, `prove:testnet` |
+| `packages/relayer` | Sponsor pipeline (`Sponsor`), x402 `TransferExecutorFacilitator`, standalone HTTP server, HCS auditor |
+| `packages/mcp` | MCP server for AI agents: `get_allowance`, `pay`, `fetch_paid_resource` (x402), `get_audit_log` |
+| `packages/nextjs` | Consumer app: Home, Pay, Request, Recurring, Activity, Agent, Sponsor, Developer; sponsor + x402 API routes reuse `@sh/relayer` |
+| `scripts` | `doctor`, `bootstrap`, `prove:testnet`, `sponsor:fund`, `check:scaffold` |
 
 Two layers of enforcement: the **relayer** protects the sponsor's HBAR (budgets, rate limits, simulation); the **account contract** protects user assets (signatures, nonces, expiry, session policy). A compromised relayer cannot authorize anything; a compromised session cannot widen its own authority.
 
@@ -88,7 +92,37 @@ The owner grants a session key a typed allowance: allowed actions, USD per-call 
 | Agent changes owner / guardians / sessions | `PRIVILEGE_ESCALATION` (or `NotSelf` on direct calls) |
 | Agent spends with no trusted price | `PRICE_UNAVAILABLE` (fail closed) |
 
-Try them in the app (**Agent → Try the scripted demo agent**). The demo agent is scripted, not an LLM.
+Try them in the app (**Agent → Try the scripted demo agent**). The demo agent is scripted, not an LLM; for a real model, use the MCP server below.
+
+## AI agents (MCP)
+
+`packages/mcp` is an MCP server holding only the agent's **session key**. Every spend is a typed session action the account checks on-chain; denials return their reason code to the model.
+
+```json
+{
+  "mcpServers": {
+    "consumer-account": {
+      "command": "yarn",
+      "args": ["--cwd", "/path/to/my-app", "mcp:start"],
+      "env": {
+        "CONSUMER_ACCOUNT": "0xYourConsumerAccount",
+        "AGENT_PRIVATE_KEY": "0xSessionKeyGrantedOnTheAgentPage",
+        "CONSUMER_APP_URL": "http://localhost:3000"
+      }
+    }
+  }
+}
+```
+
+Tools: `get_allowance` (caps, spent today, expiry, live HBAR/USD), `pay` (HBAR/USDC/WHBAR to `0.0.x` or `0x…`, sponsored), `fetch_paid_resource` (x402 over HTTP, client-side HBAR cap), `get_audit_log` (HCS decisions for this account).
+
+## x402
+
+`/api/x402/premium` is a paid resource (0.05 HBAR, live HBAR/USD data). Without `PAYMENT-SIGNATURE` it answers **402** with `PAYMENT-REQUIRED`; with a valid payment it settles and returns the data plus `PAYMENT-RESPONSE`. The app is also a facilitator for `exact` / `transferExecutor` on `hedera:testnet` (`/api/x402/facilitator/{supported,verify,settle}`), implementing `scheme_exact_hedera.md`: executor admission (factory-deployed ConsumerAccounts), calldata built only from the requirements, capped-gas simulation, `ContractExecuteTransaction` settlement and parent + child record conformance. Clients use `TransferExecutorClient` with `@x402/core`'s `x402Client`.
+
+## Recurring payments
+
+**Recurring** creates an HBAR payment plan. The account schedules each instalment with the **Hedera Schedule Service** (`scheduleCall` on `0x16b`, HIP-1215); each execution pays the configured recipient and schedules the next — no server or keeper. Execution is permissionless but inert (only the owner-configured payment, only when due); creation and cancellation are owner-only. Scheduled transactions are paid by the account, so it needs a little HBAR.
 
 ## Hedera services used
 
@@ -97,13 +131,14 @@ Try them in the app (**Agent → Try the scripted demo agent**). The demo agent 
 - **HIP-904**: `airdropTokens` for unassociated recipients.
 - **HCS**: policy audit topic (sponsor-only submit key) recording allows and denials.
 - **Mirror Node**: independent verification of every sponsored transaction, association checks, pending airdrops, audit feed.
-- **HSS (HIP-1215)**: interface verified; recurring payments not yet implemented.
+- **HSS (HIP-1215)**: recurring payments scheduled and executed by the network.
 
 ## External integrations
 
 - **SaucerSwap V2** (load-bearing): exact-output swap-to-pay via SwapRouter 0.0.1414040 and QuoterV2 0.0.1390002; live pools and quotes in [`docs/SOURCES.md`](docs/SOURCES.md).
-- **x402**: ConsumerAccount implements the spec's `ITransferExecutor` (`executeTransfer`, selector `0xea8f19fd`). The published `@x402/hedera@2.28.0` does not implement the `transferExecutor` method yet, so end-to-end x402 is **BLOCKED_EXTERNAL** (see [`docs/OPEN_QUESTIONS.md`](docs/OPEN_QUESTIONS.md)).
-- **USD oracle**: session caps go through `IPriceOracle`. No oracle is configured by default, so session spend fails closed.
+- **x402** (`@x402/core` 2.28.0): ConsumerAccount implements `ITransferExecutor`; this template ships the `transferExecutor` facilitator and client, since `@x402/hedera@2.28.0` only implements `cryptoTransfer`.
+- **Supra** push oracle (testnet `0x6Cd59830…b917`, HBAR_USD #432, USDC_USD #89) behind `SupraPriceOracle`: stale (> 2 h), future, zero or unsupported prices fail closed; values round up.
+- **MCP** (`@modelcontextprotocol/sdk` 1.32.0): agent tool server.
 
 ## Configuration
 
@@ -116,17 +151,20 @@ All variables are documented in [`.env.example`](.env.example). Only `HEDERA_OPE
 | `yarn doctor` | toolchain, env, RPC, Mirror, balances, factory, topic, SaucerSwap quote, oracle/x402 status |
 | `yarn bootstrap [--fund]` | plan (dry run) or create accounts, deploy factory, create HCS topic, write deployment artifact |
 | `yarn prove:testnet` | run flows on testnet and write `TESTNET_VERIFICATION.md` |
+| `yarn sponsor:fund [HBAR] [--fund]` | top up the sponsor from the operator (dry run without `--fund`) |
+| `yarn mcp:start` | MCP server for an agent (see above) |
+| `yarn check:scaffold` | fresh `create-scaffold-hbar` scaffold → install, typecheck, lint, test, build, boot |
 | `yarn start` | Next.js dev server |
 | `yarn next:build` / `yarn next:lint` / `yarn next:check-types` | frontend build, lint, types |
 | `yarn foundry:test` / `yarn foundry:compile` / `yarn foundry:deploy` | contracts |
-| `yarn sdk:test` / `yarn relayer:test` | TypeScript unit + Anvil end-to-end tests |
+| `yarn test` | contracts + SDK + relayer + MCP tests |
 | `yarn sdk:abis` | regenerate SDK ABIs from Foundry output |
 | `yarn relayer:start` | standalone sponsor relayer on `RELAYER_PORT` |
 
 ## Testing
 
-- `packages/foundry/test`: owner intents (replay, tampering, wrong chain/account, expiry), session policy (every reason code), x402 executor binding, recovery, factory, swap-to-pay (under-delivery, overspend, path, router allowlist). Mocks are test-only and named `Mock*`.
-- `packages/sdk/test`, `packages/relayer/test`: unit tests plus Anvil end-to-end runs against the compiled contracts (skipped if `anvil` is not installed). Local runs are never used as testnet evidence.
+- `packages/foundry/test`: owner intents (replay, tampering, wrong chain/account, expiry), session policy (every reason code), x402 executor binding, recovery, factory, swap-to-pay, Supra oracle (staleness, future, zero, revert, rounding fuzz), HSS subscriptions. Mocks are test-only and named `Mock*`.
+- `packages/sdk/test`, `packages/relayer/test`, `packages/mcp/test`: unit tests, x402 settlement-record conformance, MCP tools over an in-memory transport, plus Anvil end-to-end runs. Local runs are never used as testnet evidence.
 
 ## Security
 
@@ -139,9 +177,9 @@ Add a typed action by giving it a stable ID in `Actions.sol` and `sdk/src/action
 ## Limitations
 
 - Testnet only; contracts are unaudited.
-- No price oracle configured → agent spending is always denied until one is verified and set.
-- x402 end-to-end is blocked on facilitator support for `transferExecutor`.
-- Recurring payments (HSS), vault and launchpad recipes are not built.
+- Supra testnet feeds update hourly (or on a 5% move); if a feed goes stale for over 2 hours, agent spending is denied until it updates.
+- x402 here settles through ConsumerAccounts (`transferExecutor`); `cryptoTransfer` payers use `@x402/hedera` directly.
+- Recurring payments are HBAR-only in the UI (the contract also supports HTS tokens). Vault and launchpad recipes are not built.
 - The browser controller key is a testnet convenience stored in localStorage, not production custody.
 
 ## Troubleshooting
@@ -153,6 +191,9 @@ Add a typed action by giving it a stable ID in `Actions.sol` and `sdk/src/action
 | Mirror verification `pending` | Mirror Node lags a few seconds; the receipt links to HashScan meanwhile. |
 | Swap shows `SAUCERSWAP_QUOTE_UNAVAILABLE` | Testnet pool liquidity changed; `yarn doctor` shows the current quote. |
 | Payment to a token recipient fails | Recipient isn't associated: the app routes it as a HIP-904 airdrop instead. |
+| `SPONSOR_BUDGET_EXCEEDED` / `SPONSOR_USER_BUDGET_EXCEEDED` | Daily sponsor policy reached; raise the limits in `.env` or wait for the UTC day to roll. |
+| Sponsored calls fail with insufficient funds | `yarn doctor` shows the sponsor balance; `yarn sponsor:fund 100 --fund`. |
+| HBAR to a `0x000…` address fails from a contract | Use the account's EVM alias; see [`docs/HEDERA_GOTCHAS.md`](docs/HEDERA_GOTCHAS.md). |
 
 ## License
 

@@ -24,3 +24,10 @@ allowlists must use the same resolved address.
 The Pyth contract on testnet holds prices last updated weeks ago (pull oracle); since 2026-08 Hermes requires an
 API key to fetch updates. Supra's push feeds on testnet (`0x6Cd5…b917`) are updated by Supra (hourly or on a 5%
 move) and need no key, so `SupraPriceOracle` uses them.
+
+## `block.timestamp` lags consensus time inside scheduled calls
+
+Hedera's EVM `block.timestamp` is the start of the 2-second record block, not the transaction's consensus time. An
+HSS `scheduleCall` that fires at exactly its expiry second observed a `block.timestamp` before that second and failed
+a `block.timestamp >= dueAt` check (`SubscriptionNotDue`, testnet 2026-10-03). ConsumerAccount schedules each
+instalment `SCHEDULE_BUFFER` (10 s) after it is due.

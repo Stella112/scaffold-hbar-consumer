@@ -31,6 +31,9 @@ contract ConsumerAccount is EIP712, ReentrancyGuard, ITransferExecutor {
     /// @dev Hedera Schedule Service (HIP-1215). Same SUCCESS response code as HTS.
     address internal constant HSS = address(0x16b);
     uint64 public constant MIN_SUBSCRIPTION_INTERVAL = 60;
+    /// @dev Hedera's EVM block.timestamp is the start of the 2-second record block, so a call scheduled for exactly
+    ///      the due second can observe an earlier timestamp. Schedule a little after the due time.
+    uint64 public constant SCHEDULE_BUFFER = 10;
     uint32 public constant MIN_SUBSCRIPTION_GAS = 100_000;
     uint32 public constant MAX_SUBSCRIPTION_GAS = 3_000_000;
     /// Shortest allowed guardian-recovery timelock.
@@ -484,6 +487,7 @@ contract ConsumerAccount is EIP712, ReentrancyGuard, ITransferExecutor {
     }
 
     function _schedule(uint256 id, uint64 at, uint32 gasLimit) internal returns (int64 rc) {
+        at += SCHEDULE_BUFFER;
         (bool ok, bytes memory ret) = HSS.call(
             abi.encodeCall(
                 IHederaScheduleService.scheduleCall,

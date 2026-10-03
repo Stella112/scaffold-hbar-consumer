@@ -34,7 +34,7 @@ contract SubscriptionsTest is AccountFixture {
         assertEq(id, 1);
         assertEq(hss.calls(), 1);
         assertEq(hss.lastTo(), address(account));
-        assertEq(hss.lastExpiry(), block.timestamp + 60);
+        assertEq(hss.lastExpiry(), block.timestamp + 60 + account.SCHEDULE_BUFFER());
         assertEq(hss.lastGas(), 400_000);
         assertEq(hss.lastData(), abi.encodeCall(ConsumerAccount.executeSubscription, (id)));
         (,,,,, uint32 remaining,, address schedule) = account.subscriptions(id);
@@ -58,7 +58,7 @@ contract SubscriptionsTest is AccountFixture {
         assertEq(remaining, 2);
         assertEq(nextAt, block.timestamp + INTERVAL);
         assertEq(hss.calls(), 2);
-        assertEq(hss.lastExpiry(), block.timestamp + INTERVAL);
+        assertEq(hss.lastExpiry(), block.timestamp + INTERVAL + account.SCHEDULE_BUFFER());
     }
 
     function test_cannotPayTwiceForOneInstalment() public {
