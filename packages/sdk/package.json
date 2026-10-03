@@ -1,0 +1,27 @@
+{
+  "name": "@sh/sdk",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Framework-independent TypeScript SDK for Scaffold-HBAR Consumer accounts, intents, policy and receipts.",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./deployments/testnet.json": "./deployments/testnet.json"
+  },
+  "scripts": {
+    "check-types": "tsc --noEmit",
+    "test": "vitest run",
+    "abis": "node ../../scripts/gen-sdk-abis.mjs"
+  },
+  "dependencies": {
+    "viem": "2.39.0",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.0",
+    "typescript": "5.9.3",
+    "vitest": "3.2.7"
+  }
+}

@@ -5,7 +5,8 @@
   "workspaces": {
     "packages": [
       "packages/foundry",
-      "packages/nextjs"
+      "packages/nextjs",
+      "packages/sdk"
     ]
   },
   "scripts": {
@@ -39,7 +40,10 @@
     "next:start": "yarn workspace @sh/nextjs start",
     "postinstall": "husky",
     "precommit": "lint-staged",
-    "lint-staged": "lint-staged"
+    "lint-staged": "lint-staged",
+    "sdk:abis": "yarn workspace @sh/sdk abis",
+    "sdk:test": "yarn workspace @sh/sdk test",
+    "sdk:check-types": "yarn workspace @sh/sdk check-types"
   },
   "packageManager": "yarn@3.2.3",
   "devDependencies": {
