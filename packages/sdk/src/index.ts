@@ -8,3 +8,4 @@ export * from "./intent";
 export * from "./mirror";
 export * from "./receipt";
 export * from "./sponsor";
+export * from "./paymentRequest";
