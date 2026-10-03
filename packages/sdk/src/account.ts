@@ -81,8 +81,11 @@ export const selfCall = {
   }),
 };
 
-/** Gas for each scheduled execution (payment + rescheduling through HSS). */
-export const DEFAULT_SUBSCRIPTION_GAS = 400_000;
+/**
+ * Gas for each scheduled execution: the payment plus scheduling the next instalment. HSS `scheduleCall` costs a flat
+ * ~1.54M gas on testnet regardless of the scheduled gas limit (measured 2026-10-03), so 2M leaves headroom.
+ */
+export const DEFAULT_SUBSCRIPTION_GAS = 2_000_000;
 
 export type SubscriptionConfig = {
   /** HBAR (address(0), amount in tinybars) or an HTS token EVM address. */

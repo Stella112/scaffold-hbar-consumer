@@ -539,7 +539,8 @@ await flow(9, "Raw-call bypass: relayer denial + on-chain revert + HCS record", 
 
 await flow(10, "Recurring payment executed by the Hedera Schedule Service", async () => {
   // Scheduled executions are paid by the account itself (HSS charges the scheduling contract), so top it up.
-  const fund = await operatorWallet.sendTransaction({ to: account, value: tinybarsToWeibars(300_000_000n) });
+  // ~1.7 HBAR of fees per scheduled instalment (2M gas: payment + scheduling the next through HSS).
+  const fund = await operatorWallet.sendTransaction({ to: account, value: tinybarsToWeibars(500_000_000n) });
   await pc.waitForTransactionReceipt({ hash: fund });
   const amount = 1_000_000n; // 0.01 HBAR per instalment
   const merchantBefore = (await M.getHbarBalance(roles.MERCHANT_ACCOUNT_ID)).tinybars;

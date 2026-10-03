@@ -22,8 +22,11 @@ import { formatUnits, parseUnits, shortAddr } from "~~/services/consumer/format"
 
 const mirror = new MirrorClient({ baseUrl: process.env.NEXT_PUBLIC_MIRROR_NODE_URL ?? HEDERA_TESTNET.mirrorUrl });
 
-/** Rough HBAR the account should hold per instalment for the scheduled transaction's fees (gas at the relay price). */
-const FEE_RESERVE_TINYBARS_PER_PAYMENT = 50_000_000n;
+/**
+ * HBAR the account should hold per instalment for the scheduled transaction's fees: ~2M gas (payment + scheduling
+ * the next instalment through HSS) at the testnet gas price.
+ */
+const FEE_RESERVE_TINYBARS_PER_PAYMENT = 180_000_000n;
 
 const RecurringPage: NextPage = () => {
   const [to, setTo] = useState("");

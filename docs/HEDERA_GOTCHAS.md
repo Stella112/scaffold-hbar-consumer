@@ -31,3 +31,10 @@ Hedera's EVM `block.timestamp` is the start of the 2-second record block, not th
 HSS `scheduleCall` that fires at exactly its expiry second observed a `block.timestamp` before that second and failed
 a `block.timestamp >= dueAt` check (`SubscriptionNotDue`, testnet 2026-10-03). ConsumerAccount schedules each
 instalment `SCHEDULE_BUFFER` (10 s) after it is due.
+
+## HSS `scheduleCall` costs ~1.54M gas
+
+Measured on testnet with `eth_estimateGas`: `scheduleCall` costs a flat ~1.54M gas whatever `gasLimit` is
+scheduled (50k–2M all estimate 1.54M). A scheduled execution that reschedules itself therefore needs ~2M gas; with
+400k the inner `scheduleCall` ran out of gas (`SubscriptionScheduleFailed(-1)`). The payment itself still
+succeeded because rescheduling never blocks it.
