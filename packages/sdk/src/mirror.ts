@@ -127,6 +127,12 @@ export class MirrorClient {
     }
   }
 
+  /** Resolves a contract result's consensus timestamp to its Hedera transaction (id + charged fee). */
+  async getTransactionAt(consensusTimestamp: string): Promise<MirrorTransaction | null> {
+    const res = await this.get<{ transactions: MirrorTransaction[] }>(`/transactions?timestamp=${consensusTimestamp}`);
+    return res.transactions[0] ?? null;
+  }
+
   async getPendingAirdrops(receiverId: string): Promise<MirrorAirdrop[]> {
     return (await this.get<{ airdrops: MirrorAirdrop[] }>(`/accounts/${receiverId}/airdrops/pending`)).airdrops;
   }

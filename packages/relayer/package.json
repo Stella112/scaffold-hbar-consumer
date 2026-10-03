@@ -1,0 +1,29 @@
+{
+  "name": "@sh/relayer",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Self-hosted sponsor relayer: validates signed ConsumerAccount requests, pays Hedera fees, verifies via Mirror Node and audits decisions to HCS.",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "check-types": "tsc --noEmit",
+    "start": "tsx src/server.ts",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@hiero-ledger/sdk": "2.89.1",
+    "@sh/sdk": "workspace:*",
+    "tsx": "4.23.15",
+    "viem": "2.39.0",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.0",
+    "typescript": "5.9.3",
+    "vitest": "3.2.7"
+  }
+}

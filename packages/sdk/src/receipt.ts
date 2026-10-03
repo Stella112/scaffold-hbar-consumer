@@ -9,7 +9,13 @@ export type MirrorVerification =
   | { status: "mismatch"; result: string; detail: string; checkedAt: string }
   | { status: "pending"; detail: string; checkedAt: string };
 
-export type HcsAuditReference = { topicId: string; sequenceNumber: number; consensusTimestamp: string };
+/** consensusTimestamp is filled from Mirror Node once indexed; the submit receipt only carries the transaction id. */
+export type HcsAuditReference = {
+  topicId: string;
+  sequenceNumber: number;
+  transactionId: string;
+  consensusTimestamp: string | null;
+};
 
 type ReceiptBase = {
   id: string;

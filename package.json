@@ -6,7 +6,8 @@
     "packages": [
       "packages/foundry",
       "packages/nextjs",
-      "packages/sdk"
+      "packages/sdk",
+      "packages/relayer"
     ]
   },
   "scripts": {
@@ -43,7 +44,10 @@
     "lint-staged": "lint-staged",
     "sdk:abis": "yarn workspace @sh/sdk abis",
     "sdk:test": "yarn workspace @sh/sdk test",
-    "sdk:check-types": "yarn workspace @sh/sdk check-types"
+    "sdk:check-types": "yarn workspace @sh/sdk check-types",
+    "relayer:start": "yarn workspace @sh/relayer start",
+    "relayer:test": "yarn workspace @sh/relayer test",
+    "relayer:check-types": "yarn workspace @sh/relayer check-types"
   },
   "packageManager": "yarn@3.2.3",
   "devDependencies": {

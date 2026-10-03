@@ -117,7 +117,7 @@ describe("sponsor request schema", () => {
   it("rejects malformed requests", () => {
     expect(sponsorRequestSchema.safeParse({ kind: "owner-intent", chainId: 296 }).success).toBe(false);
     expect(
-      sponsorRequestSchema.safeParse({ kind: "create-account", chainId: 296, owner: merchant, salt: "0x00" }).success,
+      sponsorRequestSchema.safeParse({ kind: "create-account", chainId: 296, owner: merchant, salt: `0x${"0".repeat(64)}` }).success,
     ).toBe(true);
   });
 });
