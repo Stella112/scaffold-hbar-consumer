@@ -138,6 +138,25 @@ export class MirrorClient {
     }
   }
 
+  /** Parent and child records sharing a transaction id (contract-initiated transfers appear as children). */
+  async getTransactionRecords(transactionId: string): Promise<MirrorTransaction[]> {
+    try {
+      return (await this.get<{ transactions: MirrorTransaction[] }>(`/transactions/${transactionId}`)).transactions;
+    } catch (e) {
+      if (e instanceof MirrorError && e.status === 404) return [];
+      throw e;
+    }
+  }
+
+  async getContract(idOrEvmAddress: string): Promise<{ contract_id: string; evm_address: Address } | null> {
+    try {
+      return await this.get<{ contract_id: string; evm_address: Address }>(`/contracts/${idOrEvmAddress}`);
+    } catch (e) {
+      if (e instanceof MirrorError && e.status === 404) return null;
+      throw e;
+    }
+  }
+
   /** Resolves a contract result's consensus timestamp to its Hedera transaction (id + charged fee). */
   async getTransactionAt(consensusTimestamp: string): Promise<MirrorTransaction | null> {
     const res = await this.get<{ transactions: MirrorTransaction[] }>(`/transactions?timestamp=${consensusTimestamp}`);

@@ -3085,6 +3085,7 @@ __metadata:
     "@hiero-ledger/sdk": 2.89.1
     "@sh/sdk": "workspace:*"
     "@types/node": ^20.19.0
+    "@x402/core": 2.28.0
     tsx: 4.23.15
     typescript: 5.9.3
     viem: 2.39.0
@@ -3101,6 +3102,7 @@ __metadata:
     "@sh/relayer": "workspace:*"
     "@sh/sdk": "workspace:*"
     "@types/node": ^20.19.0
+    "@x402/core": 2.28.0
     dotenv: 18.0.5
     tsx: 4.23.15
     typescript: 5.9.3
@@ -5180,6 +5182,15 @@ __metadata:
     "@walletconnect/window-getters": ^1.0.1
     tslib: 1.14.1
   checksum: e82aea7195c6fe95c00e87bb38051c5549838c2e8302da94f1afa48206f79f0b620166c9820f847494505d282d1568e2086a1561b0493d2d0a1fa115f9106aef
+  languageName: node
+  linkType: hard
+
+"@x402/core@npm:2.28.0":
+  version: 2.28.0
+  resolution: "@x402/core@npm:2.28.0"
+  dependencies:
+    zod: ^3.24.2
+  checksum: 3521e2e75c131b31649d86cdf93a307480ac7cf9c8d6abdffcdb7b74d155ce875b1208ac9d079872c938f0403191cb51c1b0d6b4c0541c2e872cdc8cdb6197a8
   languageName: node
   linkType: hard
 
@@ -13039,7 +13050,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"zod@npm:^3.24.4":
+"zod@npm:^3.24.2, zod@npm:^3.24.4":
   version: 3.25.76
   resolution: "zod@npm:3.25.76"
   checksum: c9a403a62b329188a5f6bd24d5d935d2bba345f7ab8151d1baa1505b5da9f227fb139354b043711490c798e91f3df75991395e40142e6510a4b16409f302b849

@@ -27,8 +27,16 @@ import {
   testnetDeployment,
   tinybarsToWeibars,
   toSponsorRequest,
+  TransferExecutorClient,
+  X402_HBAR_ASSET,
+  X402_HEDERA_TESTNET,
+  X402_VERSION,
+  x402PayToAddress,
 } from "@sh/sdk";
-import { createTestnetSponsor, loadRelayerConfig } from "@sh/relayer";
+import { TransferExecutorFacilitator, createTestnetSponsor, loadRelayerConfig, toMirrorTransactionId } from "@sh/relayer";
+import { x402Client } from "@x402/core/client";
+import { x402Facilitator } from "@x402/core/facilitator";
+import { decodePaymentSignatureHeader, encodePaymentSignatureHeader } from "@x402/core/http";
 import { mirror, publicClient, walletFor } from "./lib/clients";
 import { hex0x, operatorEnv, parseEnv, roleEnv } from "./lib/env";
 import { type Evidence, writeVerification } from "./lib/evidence";
@@ -258,6 +266,112 @@ await flow(5, "HIP-904 airdrop to unassociated recipient", async () => {
   e.mirrorResult = match ? `pending: ${match.amount} of ${match.token_id} from ${match.sender_id}` : "no pending airdrop found";
   if (!match || assocBefore) e.status = "FAIL";
   return e;
+});
+
+await flow(6, "x402 exact / transferExecutor payment by an agent session", async () => {
+  // Facilitator = sponsor account as fee payer; the ConsumerAccount is its own ITransferExecutor.
+  const facilitator = new TransferExecutorFacilitator({
+    publicClient: pc,
+    chainId,
+    mirror: M,
+    factory,
+    feePayerAccountId: roles.SPONSOR_ACCOUNT_ID,
+    feePayerKey: hex0x(roles.SPONSOR_PRIVATE_KEY),
+    feePayerEvm: privateKeyToAccount(hex0x(roles.SPONSOR_PRIVATE_KEY)).address,
+    dataDir: ".data/prove",
+    auditor,
+  });
+  const executorId = await facilitator.admit(account);
+  const x402 = new x402Facilitator().register(X402_HEDERA_TESTNET, facilitator);
+
+  // Agent session limited to x402 payments to the merchant (long-zero form, as the facilitator resolves payTo).
+  const x402Agent = privateKeyToAccount(generatePrivateKey());
+  const merchantLongZero = x402PayToAddress(roles.MERCHANT_ACCOUNT_ID);
+  const grant = await ownerSend([
+    selfCall.grantSession(account, {
+      key: x402Agent.address,
+      expiresAt: BigInt(Math.floor(Date.now() / 1000) + 3600),
+      perCallCapUsd6: 1_000_000n,
+      dailyCapUsd6: 3_000_000n,
+      allowedActions: [ACTION_IDS.x402Payment],
+      allowedRecipients: [merchantLongZero],
+    }),
+  ]);
+  if (grant.status !== "success") throw new Error(`x402 session grant denied: ${grant.reasonCode}`);
+
+  const requirements = {
+    scheme: "exact",
+    network: X402_HEDERA_TESTNET,
+    asset: X402_HBAR_ASSET,
+    amount: "5000000", // 0.05 HBAR
+    payTo: roles.MERCHANT_ACCOUNT_ID,
+    maxTimeoutSeconds: 120,
+    extra: facilitator.getExtra(X402_HEDERA_TESTNET)!,
+  } as const;
+  const paymentRequired = {
+    x402Version: X402_VERSION,
+    resource: { url: "https://hbar.38-49-209-149.sslip.io/api/x402/premium", description: "premium data", mimeType: "application/json" },
+    accepts: [requirements],
+  };
+  const client = new x402Client().register(
+    X402_HEDERA_TESTNET,
+    new TransferExecutorClient({ signer: x402Agent, chainId, account, accountId: executorId }),
+  );
+  // Wire round trip through the PAYMENT-SIGNATURE header encoding.
+  const payload = decodePaymentSignatureHeader(encodePaymentSignatureHeader(await client.createPaymentPayload(paymentRequired)));
+
+  const out: Evidence[] = [];
+  const base = (step: string, input: string, expected: string): Evidence => ({
+    flow: 6,
+    step,
+    featureStatus: "VERIFIED_TESTNET",
+    timestamp: now(),
+    actor: `${x402Agent.address} (session key, x402-payment only)`,
+    account,
+    contract: executorId,
+    asset: "HBAR",
+    input,
+    expected,
+    actual: "",
+    transactionHash: null,
+    transactionId: null,
+    mirrorQuery: null,
+    mirrorResult: null,
+    hcs: auditor?.topicId ? `topic ${auditor.topicId}: x402 allow/deny decisions audited by the facilitator` : null,
+    status: "FAIL",
+  });
+
+  const verified = await x402.verify(payload, requirements);
+  const merchantBefore = (await M.getHbarBalance(roles.MERCHANT_ACCOUNT_ID)).tinybars;
+  const settled = await x402.settle(payload, requirements);
+  await new Promise(r => setTimeout(r, 6000));
+  const delta = (await M.getHbarBalance(roles.MERCHANT_ACCOUNT_ID)).tinybars - merchantBefore;
+  const pay = base(
+    "x402 verify + settle (ContractExecuteTransaction → executeTransfer)",
+    `PaymentRequired exact/hedera:testnet 0.05 HBAR to ${roles.MERCHANT_ACCOUNT_ID}; executors ${JSON.stringify(requirements.extra.executors)}`,
+    "isValid; settled with payTo credited exactly 5000000 tinybars; only payer + fee payer debited",
+  );
+  pay.transactionId = settled.transaction || null;
+  pay.mirrorQuery = settled.transaction
+    ? `${HEDERA_TESTNET.mirrorUrl}/transactions/${toMirrorTransactionId(settled.transaction)}`
+    : null;
+  pay.actual = `verify isValid=${verified.isValid}${verified.invalidReason ? ` (${verified.invalidReason})` : ""}; settle success=${settled.success}${settled.errorReason ? ` (${settled.errorReason}: ${settled.errorMessage ?? ""})` : ""}; merchant delta=${delta}`;
+  pay.mirrorResult = settled.success ? "record transfer lists conform (checked by facilitator)" : null;
+  pay.status = verified.isValid && settled.success && delta === 5_000_000n ? "PASS" : "FAIL";
+  out.push(pay);
+
+  const replay = await x402.settle(payload, requirements);
+  const r = base("x402 replay of the same payment", "settle the identical payload again", "rejected; nonce already consumed on chain");
+  r.actual = `success=${replay.success} ${replay.errorReason ?? ""}`;
+  r.status = !replay.success && replay.errorReason === "simulation_reverted" ? "PASS" : "FAIL";
+  out.push(r);
+
+  const tampered = await x402.verify(payload, { ...requirements, amount: "6000000" });
+  const t = base("x402 amount tampering", "same signed payload against requirements with amount 6000000", "invalid; signature binds the amount");
+  t.actual = `isValid=${tampered.isValid} ${tampered.invalidReason ?? ""}`;
+  t.status = !tampered.isValid ? "PASS" : "FAIL";
+  out.push(t);
+  return out;
 });
 
 await flow(8, "Agent attacks (session policy red team)", async () => {
