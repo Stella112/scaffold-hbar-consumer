@@ -6,7 +6,7 @@
 
 | Gate | Status | Evidence |
 | --- | --- | --- |
-| `forge fmt --check`, `forge build`, `forge test` | PASS | 112 tests: owner intents, session policy, x402 executor, recovery, factory, swap-to-pay, Supra oracle (incl. fuzz), HSS subscriptions, savings vault, launchpad |
+| `forge fmt --check`, `forge build`, `forge test` | PASS | 124 tests: owner intents, session policy, session fee caps, x402 executor, recovery, chunked factory, swap-to-pay, Supra oracle (incl. fuzz), HSS subscriptions, savings vault, launchpad |
 | SDK / relayer / MCP tests | PASS | 19 / 22 / 3 (incl. Anvil e2e, x402 settlement-record conformance, MCP over in-memory transport) |
 | lint / typecheck / build (Linux VPS, fresh clone) | PASS | |
 | Fresh external scaffold gate | PASS | `yarn check:scaffold` (rerun on final code before submission) |
@@ -26,6 +26,7 @@
 | HSS recurring payments | VERIFIED_TESTNET | 10 |
 | Savings vault | VERIFIED_TESTNET | 11 |
 | Token launchpad | VERIFIED_TESTNET | 12 |
+| Network fees counted against agent caps | VERIFIED_TESTNET | 13 |
 | Guardian recovery | VERIFIED_LOCAL | Foundry `RecoveryTest` |
 
 ## Live deployments (testnet)
@@ -42,9 +43,11 @@
 
 ## Findings from testnet (fixed or documented; see `docs/HEDERA_GOTCHAS.md`)
 
-- Factory deploy needs ~5.6M gas; bootstrap estimates.
+- Factory deploy needs ~5.6M gas; bootstrap estimates. The factory now reassembles account code from SSTORE2 chunks (~1.4 KB).
+- EIP-1167 clone accounts cannot pay HSS schedules (`INVALID_PAYER_SIGNATURE`: no key activation under delegatecall), so accounts stay full contracts.
+- Hashio's estimate/call read Mirror Node state, which lags; the proof waits for indexing between dependent steps.
 - viem's EIP-1559 fee estimate fell below the relay minimum; the chain definition quotes `eth_gasPrice`.
-- `eth_estimateGas` misses HTS fees charged as gas (airdrops, association): airdrop gas floor + `minGas` on intents.
+- `eth_estimateGas` misses HTS fees charged as gas (airdrops, association): 2.5M airdrop gas floor + `minGas` on intents.
 - HBAR from a contract to an aliased account's long-zero address fails; recipients resolve to the alias.
 - `block.timestamp` lags consensus in scheduled calls; instalments are scheduled 10 s after due.
 - HSS `scheduleCall` costs a flat ~1.54M gas; scheduled instalments get 2M.
@@ -53,4 +56,4 @@
 
 ## Known limitations
 
-See README "Limitations" and `SECURITY.md` (airdrop fees outside session caps; factory size margin).
+See README "Limitations" and `SECURITY.md`.
