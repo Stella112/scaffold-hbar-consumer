@@ -3,7 +3,7 @@ import { hederaTestnetChain } from "@sh/relayer";
 import { consumerAccountAbi, consumerAccountFactoryAbi, testnetDeployment, tinybarsToWeibars } from "@sh/sdk";
 import fs from "node:fs";
 import path from "node:path";
-import { createWalletClient, getAddress, http, isAddress, zeroHash } from "viem";
+import { createWalletClient, getAddress, http, isAddress } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { getSponsor } from "~~/services/consumer/sponsorServer";
 
