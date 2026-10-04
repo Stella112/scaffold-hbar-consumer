@@ -13,7 +13,9 @@ import {
   RESERVED_ACTION_IDS,
   buildOwnerIntent,
   buildSessionAction,
+  consumerAccountAbi,
   consumerAccountFactoryAbi,
+  consumerAccountBytecode,
   consumerAccountFactoryBytecode,
   encodePayment,
   selfCall,
@@ -76,10 +78,13 @@ describe.skipIf(!hasAnvil)("sponsor pipeline (anvil)", () => {
         await new Promise(r => setTimeout(r, 200));
       }
     }
+    // Account implementation first; the factory deploys EIP-1167 clones of it.
+    const implHash = await walletClient.deployContract({ abi: consumerAccountAbi, bytecode: consumerAccountBytecode, args: [] });
+    const implementation = (await publicClient.waitForTransactionReceipt({ hash: implHash })).contractAddress!;
     const hash = await walletClient.deployContract({
       abi: consumerAccountFactoryAbi,
       bytecode: consumerAccountFactoryBytecode,
-      args: [HBAR],
+      args: [implementation, HBAR],
     });
     factory = (await publicClient.waitForTransactionReceipt({ hash })).contractAddress!;
     sponsor = make();

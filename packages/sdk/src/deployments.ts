@@ -11,7 +11,9 @@ export type Deployment = {
   updatedAt: string | null;
   factory?: Address;
   factoryContractId?: string;
-  /** keccak256 of the factory creation bytecode that was deployed; bootstrap redeploys when it changes. */
+  /** ConsumerAccount implementation behind every EIP-1167 account clone. */
+  accountImplementation?: { address: Address; contractId?: string };
+  /** keccak256 of factory + implementation creation bytecode deployed; bootstrap redeploys when it changes. */
   factoryCodeHash?: string;
   auditTopicId?: string;
   tokens?: Record<string, { tokenId: string; address: Address; decimals: number; symbol: string; label?: string }>;

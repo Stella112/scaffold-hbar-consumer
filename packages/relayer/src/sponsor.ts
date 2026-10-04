@@ -134,7 +134,15 @@ export class Sponsor {
       const hash = await this.d.walletClient.sendTransaction({ to: p.to, data: p.data, gas });
       const evmReceipt = await this.d.publicClient.waitForTransactionReceipt({ hash });
       if (evmReceipt.status !== "success") {
-        return this.denyByContract(p, { reason: "UNKNOWN_REVERT", errorName: null, args: [] }, hash);
+        // Receipts carry no revert data; Mirror Node records it, so decode the real reason when available
+        // (e.g. a cap exceeded only once network fees were known on chain).
+        let decoded: DecodedRevert = { reason: "UNKNOWN_REVERT", errorName: null, args: [] };
+        if (this.d.mirror) {
+          const result = await this.d.mirror.waitForContractResult(hash, 20_000).catch(() => null);
+          const data = result?.error_message;
+          if (data && data.startsWith("0x") && data.length > 2) decoded = decodeRevertData(data as Hex);
+        }
+        return this.denyByContract(p, decoded, hash);
       }
 
       const verification = await this.verify(hash);

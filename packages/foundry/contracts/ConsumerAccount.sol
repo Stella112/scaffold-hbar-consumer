@@ -6,6 +6,7 @@ import { ECDSA } from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import { ReentrancyGuard } from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import { Initializable } from "@openzeppelin/contracts/proxy/utils/Initializable.sol";
 import { IHederaTokenService } from "./interfaces/IHederaTokenService.sol";
 import { IPriceOracle } from "./interfaces/IPriceOracle.sol";
 import { IHederaScheduleService } from "./interfaces/IHederaScheduleService.sol";
@@ -22,7 +23,7 @@ import { ISaucerSwapV2Router } from "./interfaces/ISaucerSwapV2Router.sol";
 ///         - Guardians can rotate the owner after a threshold of approvals and a timelock.
 ///         - Implements the x402 `transferExecutor` interface so a facilitator can settle signed payments.
 /// @dev The submitter (msg.sender) never gains authority. All authority comes from signatures or self-calls.
-contract ConsumerAccount is EIP712, ReentrancyGuard, ITransferExecutor {
+contract ConsumerAccount is EIP712, ReentrancyGuard, ITransferExecutor, Initializable {
     using SafeERC20 for IERC20;
 
     // ---------------------------------------------------------------- constants
@@ -182,6 +183,7 @@ contract ConsumerAccount is EIP712, ReentrancyGuard, ITransferExecutor {
     event TokenAssociated(address indexed token);
     event SwapRouterSet(address indexed router, bool allowed);
     event VaultSet(address indexed vault, bool allowed);
+    event SessionFeeCharged(address indexed key, uint256 tinybars, uint256 usd6);
     event VaultDeposited(address indexed signer, address indexed vault, uint256 assets, uint256 shares);
     event SubscriptionCreated(
         uint256 indexed id, address asset, address to, uint256 amount, uint64 interval, uint64 firstAt, uint32 count
@@ -230,7 +232,14 @@ contract ConsumerAccount is EIP712, ReentrancyGuard, ITransferExecutor {
 
     // ---------------------------------------------------------------- construction
 
-    constructor(address owner_, IPriceOracle oracle_) EIP712("ConsumerAccount", "1") {
+    /// @dev The implementation behind every account clone. It can never be initialized itself.
+    constructor() EIP712("ConsumerAccount", "1") {
+        _disableInitializers();
+    }
+
+    /// @notice Called once by the factory in the same transaction that creates the clone, so it cannot be
+    ///         front-run. EIP712 recomputes the domain separator for each clone's own address.
+    function initialize(address owner_, IPriceOracle oracle_) external initializer {
         if (owner_ == address(0)) revert InvalidConfig();
         owner = owner_;
         oracle = oracle_;
@@ -287,34 +296,45 @@ contract ConsumerAccount is EIP712, ReentrancyGuard, ITransferExecutor {
             if (!_sessionActionAllowed[_actionKey(signer, _sessions[signer].epoch, id)]) revert ActionNotAllowed();
         }
 
+        uint256 hbarBefore = address(this).balance;
+        (uint256 usd6, uint256 intendedHbar) = _dispatchAction(id, action.actionData, signer, isOwner);
+        // Fees the network takes from the account (e.g. HIP-904 airdrop fees) count against the session's caps too.
+        if (!isOwner) _chargeHbarOutflow(signer, hbarBefore, intendedHbar, usd6);
+    }
+
+    /// @return usd6 session charge already applied; intendedHbar tinybars the action was meant to send.
+    function _dispatchAction(bytes32 id, bytes calldata actionData, address signer, bool isOwner)
+        internal
+        returns (uint256 usd6, uint256 intendedHbar)
+    {
         if (id == Actions.VAULT_DEPOSIT) {
-            (address vault, uint256 assets) = abi.decode(action.actionData, (address, uint256));
+            (address vault, uint256 assets) = abi.decode(actionData, (address, uint256));
             if (!vaultAllowed[vault]) revert TargetNotAllowed();
             address underlying = IERC4626(vault).asset();
-            uint256 depositUsd6 = isOwner ? 0 : _chargeSession(signer, underlying, vault, assets);
+            usd6 = isOwner ? 0 : _chargeSession(signer, underlying, vault, assets);
             uint256 before = IERC20(vault).balanceOf(address(this));
             IERC20(underlying).forceApprove(vault, assets);
             uint256 shares = IERC4626(vault).deposit(assets, address(this));
             IERC20(underlying).forceApprove(vault, 0);
             if (shares == 0 || IERC20(vault).balanceOf(address(this)) - before != shares) revert VaultDepositFailed();
             emit VaultDeposited(signer, vault, assets, shares);
-            emit ActionExecuted(id, signer, underlying, vault, assets, depositUsd6);
-            return;
+            emit ActionExecuted(id, signer, underlying, vault, assets, usd6);
+            return (usd6, 0);
         }
 
         if (id == Actions.SWAP_TO_PAY) {
-            SwapToPay memory p = abi.decode(action.actionData, (SwapToPay));
+            SwapToPay memory p = abi.decode(actionData, (SwapToPay));
             if (!swapRouterAllowed[p.router]) revert TargetNotAllowed();
             // Worst case the account spends amountInMaximum of tokenIn; price and cap that.
-            uint256 swapUsd6 = isOwner ? 0 : _chargeSession(signer, p.tokenIn, p.to, p.amountInMaximum);
+            usd6 = isOwner ? 0 : _chargeSession(signer, p.tokenIn, p.to, p.amountInMaximum);
             uint256 amountIn = _swapToPay(p);
             emit SwapToPayExecuted(signer, p.tokenIn, amountIn, p.tokenOut, p.amountOut, p.to);
-            emit ActionExecuted(id, signer, p.tokenOut, p.to, p.amountOut, swapUsd6);
-            return;
+            emit ActionExecuted(id, signer, p.tokenOut, p.to, p.amountOut, usd6);
+            return (usd6, 0);
         }
 
-        (address asset, address to, uint256 amount) = _decodeTransferAction(id, action.actionData);
-        uint256 usd6 = isOwner ? 0 : _chargeSession(signer, asset, to, amount);
+        (address asset, address to, uint256 amount) = _decodeTransferAction(id, actionData);
+        usd6 = isOwner ? 0 : _chargeSession(signer, asset, to, amount);
 
         if (id == Actions.PAYMENT) {
             _transferOut(asset, to, amount);
@@ -322,6 +342,7 @@ contract ConsumerAccount is EIP712, ReentrancyGuard, ITransferExecutor {
             _airdrop(asset, to, amount);
         }
         emit ActionExecuted(id, signer, asset, to, amount, usd6);
+        return (usd6, asset == address(0) ? amount : 0);
     }
 
     // ---------------------------------------------------------------- x402 transferExecutor
@@ -348,9 +369,7 @@ contract ConsumerAccount is EIP712, ReentrancyGuard, ITransferExecutor {
             }
         }
         _useIntent(nonce, validUntil);
-        if (!isOwner) _chargeSession(signer, asset, to, amount);
-
-        _transferOut(asset, to, amount);
+        _x402Transfer(signer, isOwner, asset, to, amount);
         emit X402TransferExecuted(signer, asset, to, amount, nonce);
     }
 
@@ -628,6 +647,33 @@ contract ConsumerAccount is EIP712, ReentrancyGuard, ITransferExecutor {
         if (spent + usd6 > s.dailyCapUsd6) revert DailyCapExceeded();
         s.day = today;
         s.spentTodayUsd6 = uint128(spent + usd6);
+    }
+
+    function _x402Transfer(address signer, bool isOwner, address asset, address to, uint256 amount) internal {
+        uint256 usd6 = isOwner ? 0 : _chargeSession(signer, asset, to, amount);
+        uint256 hbarBefore = address(this).balance;
+        _transferOut(asset, to, amount);
+        if (!isOwner) _chargeHbarOutflow(signer, hbarBefore, asset == address(0) ? amount : 0, usd6);
+    }
+
+    /// @dev Any HBAR that left the account during a session action beyond what the action meant to send (network fees
+    ///      charged to the contract, such as HIP-904 airdrop fees) is priced and charged against the same caps.
+    function _chargeHbarOutflow(address key, uint256 hbarBefore, uint256 intendedHbar, uint256 alreadyUsd6) internal {
+        uint256 hbarAfter = address(this).balance;
+        if (hbarAfter >= hbarBefore || hbarBefore - hbarAfter <= intendedHbar) return;
+        uint256 extra = hbarBefore - hbarAfter - intendedHbar;
+        IPriceOracle o = oracle;
+        if (address(o) == address(0)) revert PriceUnavailable();
+        (bool ok, uint256 feeUsd6) = o.quoteUsd6(address(0), extra);
+        if (!ok) revert PriceUnavailable();
+        Session storage s = _sessions[key];
+        if (alreadyUsd6 + feeUsd6 > s.perCallCapUsd6) revert PerCallCapExceeded();
+        uint32 today = uint32(block.timestamp / 1 days);
+        uint256 spent = s.day == today ? s.spentTodayUsd6 : 0;
+        if (spent + feeUsd6 > s.dailyCapUsd6) revert DailyCapExceeded();
+        s.day = today;
+        s.spentTodayUsd6 = uint128(spent + feeUsd6);
+        emit SessionFeeCharged(key, extra, feeUsd6);
     }
 
     function _decodeTransferAction(bytes32 id, bytes calldata data)

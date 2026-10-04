@@ -44,7 +44,7 @@ abstract contract AccountFixture is Test {
         vm.store(address(0x167), bytes32(0), bytes32(uint256(22))); // responseCode slot
 
         target = new CallTarget();
-        factory = new ConsumerAccountFactory(IPriceOracle(address(oracle)));
+        factory = new ConsumerAccountFactory(address(new ConsumerAccount()), IPriceOracle(address(oracle)));
         account = factory.createAccount(ownerAddr, bytes32(0));
 
         usdc.mint(address(account), 1_000e6);

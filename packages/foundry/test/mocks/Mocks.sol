@@ -2,6 +2,7 @@
 pragma solidity ^0.8.24;
 
 import { ERC20 } from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import { Vm } from "forge-std/Vm.sol";
 import { IPriceOracle } from "../../contracts/interfaces/IPriceOracle.sol";
 import { IHederaTokenService } from "../../contracts/interfaces/IHederaTokenService.sol";
 import { ISupraSValueFeed } from "../../contracts/interfaces/ISupraSValueFeed.sol";
@@ -71,6 +72,11 @@ contract MockHederaTokenService {
     function airdropTokens(IHederaTokenService.TokenTransferList[] memory lists) external returns (int64) {
         // Hedera charges the calling contract's balance; reject like INSUFFICIENT_PAYER_BALANCE (10) when it can't pay.
         if (msg.sender.balance < airdropFeeRequired) return 10;
+        // Like Hedera, charge the airdrop fee to the calling contract's own HBAR (via a cheatcode in tests).
+        if (airdropHbarFee != 0) {
+            Vm(address(uint160(uint256(keccak256("hevm cheat code")))))
+                .deal(msg.sender, msg.sender.balance - airdropHbarFee);
+        }
         airdropCalls++;
         lastToken = lists[0].token;
         lastSender = lists[0].transfers[0].accountID;
@@ -80,6 +86,11 @@ contract MockHederaTokenService {
     }
 
     uint256 public airdropFeeRequired;
+    uint256 public airdropHbarFee;
+
+    function setAirdropHbarFee(uint256 fee) external {
+        airdropHbarFee = fee;
+    }
 
     function setAirdropFeeRequired(uint256 fee) external {
         airdropFeeRequired = fee;

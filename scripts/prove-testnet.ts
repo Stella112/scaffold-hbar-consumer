@@ -762,6 +762,64 @@ await flow(12, "Token launchpad: HTS token launch, purchase, one-time graduation
   return out;
 });
 
+await flow(13, "Agent airdrop fees count against its USD caps", async () => {
+  // HIP-904 airdrops from a contract are paid from the contract's own HBAR; the account prices that fee and
+  // charges it to the session, so an agent cannot spend HBAR on fees beyond its limits.
+  const grantAirdropper = async (capUsd6: bigint) => {
+    const key = privateKeyToAccount(generatePrivateKey());
+    const g = await ownerSend([
+      selfCall.grantSession(account, {
+        key: key.address,
+        expiresAt: BigInt(Math.floor(Date.now() / 1000) + 3600),
+        perCallCapUsd6: capUsd6,
+        dailyCapUsd6: capUsd6 * 3n,
+        allowedActions: [ACTION_IDS.airdrop],
+        allowedRecipients: [],
+      }),
+    ]);
+    if (g.status !== "success") throw new Error(`airdrop session grant denied: ${g.reasonCode}`);
+    return key;
+  };
+  const reader = new ConsumerAccountReader(pc, account);
+  const out: Evidence[] = [];
+
+  const agentA = await grantAirdropper(1_000_000n); // $1 per call
+  const hbarBefore = (await M.getHbarBalance(account)).tinybars;
+  const ok = await actionSend(agentA, ACTION_IDS.airdrop, encodePayment({ asset: WHBAR, to: unassociatedEvm, amount: 1_000n }));
+  await new Promise(r => setTimeout(r, 6000));
+  const feePaid = hbarBefore - (await M.getHbarBalance(account)).tinybars;
+  const spent = (await reader.session(agentA.address)).spentTodayUsd6;
+  const feeEvent = parseAbi(["event SessionFeeCharged(address indexed key, uint256 tinybars, uint256 usd6)"]);
+  const logs = await M.get<{ logs: { data: Hex; topics: Hex[] }[] }>(`/contracts/${account}/results/logs?order=desc&limit=10`);
+  const charged = logs.logs.flatMap(l => {
+    try {
+      const ev = decodeEventLog({ abi: feeEvent, data: l.data, topics: l.topics as [Hex, ...Hex[]] });
+      return ev.args.key.toLowerCase() === agentA.address.toLowerCase() ? [ev.args] : [];
+    } catch {
+      return [];
+    }
+  });
+  const a = fromReceipt(13, "Agent airdrop: HIP-904 fee charged to the session", ok, {
+    asset: "WHBAR",
+    input: "session airdrop 0.00001 WHBAR to the unassociated account (cap $1/call)",
+    expected: "success; SessionFeeCharged with the HBAR fee the account paid; session spend includes it",
+  });
+  a.actual += `; account HBAR fee=${feePaid}; SessionFeeCharged=${charged.map(c => `${c.tinybars} tinybars / ${c.usd6} usd6`).join(",") || "none"}; session spentToday=${spent} usd6`;
+  if (ok.status === "success" && (charged.length !== 1 || charged[0]!.tinybars === 0n || spent < charged[0]!.usd6)) a.status = "FAIL";
+  out.push(a);
+
+  const agentB = await grantAirdropper(50_000n); // $0.05 per call: the fee alone (~$0.10) exceeds it
+  const denied = await actionSend(agentB, ACTION_IDS.airdrop, encodePayment({ asset: WHBAR, to: unassociatedEvm, amount: 1_000n }));
+  const b = fromReceipt(13, "Agent airdrop whose fee exceeds the cap is denied", denied, {
+    asset: "WHBAR",
+    input: "session airdrop 0.00001 WHBAR (token value ≈ $0) with a $0.05 per-call cap",
+    expected: "denied PER_CALL_CAP_EXCEEDED: the fee alone exceeds the cap",
+  });
+  b.status = denied.status === "denied" && denied.reasonCode === "PER_CALL_CAP_EXCEEDED" ? "PASS" : "FAIL";
+  out.push(b);
+  return out;
+});
+
 const header = [
   `Run: ${now()}`,
   `Factory: ${testnetDeployment.factoryContractId} (${factory})`,

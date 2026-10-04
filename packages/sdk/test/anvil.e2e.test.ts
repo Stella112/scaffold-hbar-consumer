@@ -16,7 +16,8 @@ import {
 } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { foundry } from "viem/chains";
-import { consumerAccountAbi, consumerAccountFactoryAbi, consumerAccountFactoryBytecode } from "../src/abi";
+import { consumerAccountAbi, consumerAccountFactoryAbi, consumerAccountBytecode,
+  consumerAccountFactoryBytecode } from "../src/abi";
 import { ACTION_IDS, HBAR, RESERVED_ACTION_IDS, encodePayment } from "../src/actions";
 import { encodeCreateAccount, encodeExecuteOwnerIntent, selfCall } from "../src/account";
 import { reasonFromError } from "../src/errors";
@@ -54,10 +55,13 @@ describe.skipIf(!hasAnvil)("anvil e2e: sponsored ConsumerAccount", () => {
         await new Promise(r => setTimeout(r, 200));
       }
     }
+    // Account implementation first; the factory deploys EIP-1167 clones of it.
+    const implHash = await sponsor.deployContract({ abi: consumerAccountAbi, bytecode: consumerAccountBytecode, args: [] });
+    const implementation = (await publicClient.waitForTransactionReceipt({ hash: implHash })).contractAddress!;
     const hash = await sponsor.deployContract({
       abi: consumerAccountFactoryAbi,
       bytecode: consumerAccountFactoryBytecode,
-      args: [HBAR],
+      args: [implementation, HBAR],
     });
     factory = (await publicClient.waitForTransactionReceipt({ hash })).contractAddress!;
     await send(factory, encodeCreateAccount(controller.address, zeroHash));

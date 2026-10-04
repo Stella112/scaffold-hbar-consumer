@@ -25,6 +25,8 @@ import {
   HBAR,
   TINYBARS_PER_HBAR,
   type Deployment,
+  consumerAccountAbi,
+  consumerAccountBytecode,
   consumerAccountFactoryAbi,
   consumerAccountFactoryBytecode,
   entityIdToLongZero,
@@ -184,9 +186,10 @@ async function main() {
 
     // Factory: redeploy when the contract code changed (new accounts get the new ConsumerAccount) or when its
     // default oracle differs (new accounts take the factory's default oracle).
-    const codeHash = keccak256(consumerAccountFactoryBytecode);
+    // Accounts are EIP-1167 clones of one implementation; a change to either contract means a new factory.
+    const codeHash = keccak256(`${consumerAccountFactoryBytecode}${consumerAccountBytecode.slice(2)}`);
     if (deployment.factory && deployment.factoryCodeHash !== codeHash) {
-      console.log("  ConsumerAccountFactory bytecode changed; deploying a new factory");
+      console.log("  ConsumerAccount or factory bytecode changed; deploying a new implementation and factory");
       deployment.factory = undefined;
     }
     if (deployment.factory) {
@@ -201,7 +204,10 @@ async function main() {
       }
     }
     if (!deployment.factory) {
+      const impl = await deploy("ConsumerAccount implementation", consumerAccountAbi, consumerAccountBytecode, []);
+      deployment.accountImplementation = { address: impl.address, contractId: impl.contractId };
       const f = await deploy("ConsumerAccountFactory", consumerAccountFactoryAbi, consumerAccountFactoryBytecode, [
+        impl.address,
         deployment.oracle.address,
       ]);
       deployment.factory = f.address;
