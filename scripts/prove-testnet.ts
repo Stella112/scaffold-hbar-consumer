@@ -669,7 +669,7 @@ await flow(12, "Token launchpad: bonding curve, one-time graduation into SaucerS
   const pad = requireDeployment("launchpad");
   const padAbi = tokenLaunchpadAbi;
   // The account pays the HTS token-creation fee from its own HBAR; unspent fee comes back.
-  const fund = await operatorWallet.sendTransaction({ to: account, value: tinybarsToWeibars(4_000_000_000n) });
+  const fund = await operatorWallet.sendTransaction({ to: account, value: tinybarsToWeibars(1_800_000_000n) });
   await pc.waitForTransactionReceipt({ hash: fund });
   // Curve 0.01 → 0.03 HBAR over 600,000 tokens; graduate at 22 HBAR (covers the ~$2 SaucerSwap pool fee).
   const params = {
@@ -687,7 +687,7 @@ await flow(12, "Token launchpad: bonding curve, one-time graduation into SaucerS
   const out: Evidence[] = [];
   const accountHbar0 = (await M.getHbarBalance(account)).tinybars;
   const launch = await ownerSend([
-    { target: pad.address, value: 3_000_000_000n, data: encodeFunctionData({ abi: padAbi, functionName: "launch", args: [params] }) },
+    { target: pad.address, value: 1_500_000_000n, data: encodeFunctionData({ abi: padAbi, functionName: "launch", args: [params] }) },
   ]);
   const id = (await pc.readContract({ address: pad.address, abi: padAbi, functionName: "launchCount" })) - 1n;
   const info = await pc.readContract({ address: pad.address, abi: padAbi, functionName: "launches", args: [id] });
@@ -698,12 +698,12 @@ await flow(12, "Token launchpad: bonding curve, one-time graduation into SaucerS
   const l = fromReceipt(12, "Account launches an immutable fixed-supply HTS token", launch, {
     asset: "HBAR",
     contract: pad.contractId ?? pad.address,
-    input: "owner intent launchpad.launch{30 HBAR} SDEMO: 1,000,000 supply, 600,000 on a 0.01→0.03 HBAR curve, target 22 HBAR, 5% creator fee",
+    input: "owner intent launchpad.launch{15 HBAR} SDEMO: 1,000,000 supply, 600,000 on a 0.01→0.03 HBAR curve, target 22 HBAR, 5% creator fee",
     expected: "token created by HTS with no admin/supply/freeze keys, FINITE supply, launchpad treasury; unspent fee refunded",
   });
   l.mirrorQuery = `${HEDERA_TESTNET.mirrorUrl}/tokens/${tokenId}`;
-  l.mirrorResult = `${token.name} ${tokenId}: ${token.supply_type} max ${token.max_supply} total ${token.total_supply}, treasury ${token.treasury_account_id}, admin_key ${token.admin_key ? "set" : "none"}, supply_key ${token.supply_key ? "set" : "none"}, freeze_key ${token.freeze_key ? "set" : "none"}; account HBAR spent ${feeSpent} of 3000000000 sent`;
-  if (launch.status === "success" && (token.supply_type !== "FINITE" || token.admin_key || token.supply_key || token.freeze_key || feeSpent >= 3_000_000_000n)) l.status = "FAIL";
+  l.mirrorResult = `${token.name} ${tokenId}: ${token.supply_type} max ${token.max_supply} total ${token.total_supply}, treasury ${token.treasury_account_id}, admin_key ${token.admin_key ? "set" : "none"}, supply_key ${token.supply_key ? "set" : "none"}, freeze_key ${token.freeze_key ? "set" : "none"}; account HBAR spent ${feeSpent} of 1500000000 sent`;
+  if (launch.status === "success" && (token.supply_type !== "FINITE" || token.admin_key || token.supply_key || token.freeze_key || feeSpent >= 1_500_000_000n)) l.status = "FAIL";
   out.push(l);
   if (launch.status !== "success") return out;
 
