@@ -236,9 +236,11 @@ async function main() {
       const v = await deploy("SavingsVault", savingsVaultAbi, savingsVaultBytecode, [whbar, "Savings WHBAR", "svWHBAR"]);
       deployment.vaults = { ...deployment.vaults, WHBAR: { address: v.address, contractId: v.contractId, asset: whbar } };
     }
-    const launchpadHash = keccak256(tokenLaunchpadBytecode);
+    // Graduation seeds SaucerSwap V1 pools (RouterV3, docs.saucerswap.finance, verified live 2026-10-04).
+    const saucerV1Router = entityIdToLongZero("0.0.19264");
+    const launchpadHash = keccak256(`${tokenLaunchpadBytecode}${saucerV1Router.slice(2)}`);
     if (!deployment.launchpad || deployment.launchpad.codeHash !== launchpadHash) {
-      const l = await deploy("TokenLaunchpad", tokenLaunchpadAbi, tokenLaunchpadBytecode, []);
+      const l = await deploy("TokenLaunchpad", tokenLaunchpadAbi, tokenLaunchpadBytecode, [saucerV1Router]);
       deployment.launchpad = { address: l.address, contractId: l.contractId, codeHash: launchpadHash };
     }
 

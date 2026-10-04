@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { longZeroToEntityId, testnetDeployment, tokenLaunchpadAbi } from "@sh/sdk";
+import { HEDERA_TESTNET, longZeroToEntityId, testnetDeployment, tokenLaunchpadAbi } from "@sh/sdk";
 import { useQuery } from "@tanstack/react-query";
 import type { NextPage } from "next";
 import { AccountGate } from "~~/components/consumer/AccountGate";
@@ -21,9 +21,11 @@ const LaunchPage: NextPage = () => {
     name: "",
     symbol: "",
     supply: "1000000",
-    forSale: "600000",
-    price: "0.01",
-    target: "10",
+    curveSupply: "600000",
+    startPrice: "0.01",
+    endPrice: "0.03",
+    target: "25",
+    feePct: "5",
     hours: "24",
   });
   const [buyAmount, setBuyAmount] = useState<Record<string, string>>({});
@@ -69,8 +71,9 @@ const LaunchPage: NextPage = () => {
       <div className="text-center max-w-xl">
         <h1 className="text-2xl font-bold">Launch a token</h1>
         <p className="opacity-70 mt-2 text-sm">
-          Create a fixed-supply Hedera token nobody can mint more of or freeze. Sell it at a fixed price: if the target
-          is reached it graduates once and you receive the HBAR; if not, every buyer gets a refund.
+          Create a fixed-supply Hedera token nobody can mint more of or freeze. Its price rises along a curve as people
+          buy. At the target it graduates once into a SaucerSwap pool (liquidity locked) and you get your fee; if the
+          target isn&apos;t reached in time, every buyer gets a refund.
         </p>
       </div>
       {!pad ? (
@@ -97,8 +100,11 @@ const LaunchPage: NextPage = () => {
                       {field("name", "Name")}
                       {field("symbol", "Symbol")}
                       {field("supply", "Total supply")}
-                      {field("forSale", "For sale")}
-                      {field("price", "Price (HBAR per token)")}
+                      {field("curveSupply", "Sold on the curve")}
+                      {field("startPrice", "Start price (HBAR)")}
+                      {field("endPrice", "End price (HBAR)")}
+                      {field("feePct", "Creator fee (%, ≤ 10)")}
+
                       {field("target", "Graduation target (HBAR)")}
                       {field("hours", "Sale length (hours)")}
                     </div>
@@ -129,8 +135,10 @@ const LaunchPage: NextPage = () => {
                               symbol: form.symbol.toUpperCase(),
                               decimals: 2,
                               supply: parseUnits(form.supply, 2),
-                              forSale: parseUnits(form.forSale, 2),
-                              priceTinybars: parseUnits(form.price, 8),
+                              curveSupply: parseUnits(form.curveSupply, 2),
+                              startPrice: parseUnits(form.startPrice, 8),
+                              endPrice: parseUnits(form.endPrice, 8),
+                              creatorFeeBps: Math.round(Math.min(10, Math.max(0, Number(form.feePct) || 0)) * 100),
                               target: parseUnits(form.target, 8),
                               duration: BigInt(Math.round(Number(form.hours) * 3600)),
                             },
@@ -182,9 +190,23 @@ const LaunchPage: NextPage = () => {
                           />
                           <span className="text-xs opacity-70">
                             {formatUnits(l.raised, 8, 2)} / {formatUnits(l.target, 8, 2)} HBAR raised ·{" "}
-                            {formatUnits(l.sold, l.decimals)} / {formatUnits(l.forSale, l.decimals)} sold at{" "}
-                            {formatUnits(l.priceTinybars, 8)} HBAR · ends{" "}
-                            {new Date(Number(l.deadline) * 1000).toLocaleString()}
+                            {formatUnits(l.sold, l.decimals)} / {formatUnits(l.curveSupply, l.decimals)} sold · price{" "}
+                            {formatUnits(l.startPrice + ((l.endPrice - l.startPrice) * l.sold) / l.curveSupply, 8)} HBAR
+                            {l.pair !== "0x0000000000000000000000000000000000000000" ? (
+                              <>
+                                {" "}
+                                ·{" "}
+                                <a
+                                  className="link"
+                                  href={`${HEDERA_TESTNET.hashscan}/contract/${longZeroToEntityId(l.pair) ?? l.pair}`}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                >
+                                  SaucerSwap pool
+                                </a>
+                              </>
+                            ) : null}{" "}
+                            · ends {new Date(Number(l.deadline) * 1000).toLocaleString()}
                           </span>
                           <div className="flex gap-2 flex-wrap">
                             {open ? (

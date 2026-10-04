@@ -5,7 +5,13 @@ import { ConsumerAccount } from "../contracts/ConsumerAccount.sol";
 import { Actions } from "../contracts/Actions.sol";
 import { TokenLaunchpad } from "../contracts/TokenLaunchpad.sol";
 import { LaunchpadBuyAction } from "../contracts/actions/LaunchpadBuyAction.sol";
-import { MockTransferModule } from "./mocks/Mocks.sol";
+import { ISaucerSwapV1Router } from "../contracts/interfaces/ISaucerSwapV1.sol";
+import {
+    MockExchangeRate,
+    MockSaucerSwapV1Factory,
+    MockSaucerSwapV1Router,
+    MockTransferModule
+} from "./mocks/Mocks.sol";
 import { AccountFixture } from "./ConsumerAccount.t.sol";
 
 /// Custom typed actions through owner-installed planner modules.
@@ -96,7 +102,9 @@ contract LaunchpadBuyActionTest is AccountFixture {
 
     function setUp() public override {
         super.setUp();
-        pad = new TokenLaunchpad();
+        vm.etch(address(0x168), address(new MockExchangeRate()).code);
+        MockSaucerSwapV1Factory dex = new MockSaucerSwapV1Factory();
+        pad = new TokenLaunchpad(ISaucerSwapV1Router(address(new MockSaucerSwapV1Router(dex, address(0x3ad2)))));
         buyAction = new LaunchpadBuyAction(pad);
         address creator = makeAddr("creator");
         vm.deal(creator, 100e8);
@@ -107,9 +115,11 @@ contract LaunchpadBuyActionTest is AccountFixture {
                 symbol: "DEMO",
                 decimals: 2,
                 supply: 1_000_000_00,
-                forSale: 600_000_00,
-                priceTinybars: 1_000_000,
-                target: 100_000_000,
+                curveSupply: 600_000_00,
+                startPrice: 1_000_000,
+                endPrice: 1_000_000, // flat curve: 0.01 HBAR per token
+                target: 30e8,
+                creatorFeeBps: 0,
                 duration: 1 hours
             })
         );

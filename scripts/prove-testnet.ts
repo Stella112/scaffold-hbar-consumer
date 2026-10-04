@@ -665,20 +665,23 @@ await flow(11, "Savings vault: agent deposits within caps, can never withdraw or
   return out;
 });
 
-await flow(12, "Token launchpad: HTS token launch, purchase, one-time graduation, airdropped claims", async () => {
+await flow(12, "Token launchpad: bonding curve, one-time graduation into SaucerSwap, airdropped claims", async () => {
   const pad = requireDeployment("launchpad");
   const padAbi = tokenLaunchpadAbi;
   // The account pays the HTS token-creation fee from its own HBAR; unspent fee comes back.
   const fund = await operatorWallet.sendTransaction({ to: account, value: tinybarsToWeibars(4_000_000_000n) });
   await pc.waitForTransactionReceipt({ hash: fund });
+  // Curve 0.01 → 0.03 HBAR over 600,000 tokens; graduate at 22 HBAR (covers the ~$2 SaucerSwap pool fee).
   const params = {
     name: "Scaffold Demo",
     symbol: "SDEMO",
     decimals: 2,
     supply: 1_000_000_00n,
-    forSale: 600_000_00n,
-    priceTinybars: 1_000_000n, // 0.01 HBAR per token
-    target: 100_000_000n, // graduate at 1 HBAR
+    curveSupply: 600_000_00n,
+    startPrice: 1_000_000n,
+    endPrice: 3_000_000n,
+    target: 2_200_000_000n,
+    creatorFeeBps: 500,
     duration: 3600n,
   };
   const out: Evidence[] = [];
@@ -695,7 +698,7 @@ await flow(12, "Token launchpad: HTS token launch, purchase, one-time graduation
   const l = fromReceipt(12, "Account launches an immutable fixed-supply HTS token", launch, {
     asset: "HBAR",
     contract: pad.contractId ?? pad.address,
-    input: "owner intent launchpad.launch{30 HBAR} SDEMO: 1,000,000 supply, 600,000 for sale at 0.01 HBAR, target 1 HBAR",
+    input: "owner intent launchpad.launch{30 HBAR} SDEMO: 1,000,000 supply, 600,000 on a 0.01→0.03 HBAR curve, target 22 HBAR, 5% creator fee",
     expected: "token created by HTS with no admin/supply/freeze keys, FINITE supply, launchpad treasury; unspent fee refunded",
   });
   l.mirrorQuery = `${HEDERA_TESTNET.mirrorUrl}/tokens/${tokenId}`;
@@ -704,17 +707,21 @@ await flow(12, "Token launchpad: HTS token launch, purchase, one-time graduation
   out.push(l);
   if (launch.status !== "success") return out;
 
-  // Operator (an ordinary Hedera account) buys 100 tokens for exactly 1 HBAR, reaching the target.
-  const cost = await pc.readContract({ address: pad.address, abi: padAbi, functionName: "quote", args: [id, 100_00n] });
-  const buyHash = await operatorWallet.writeContract({ address: pad.address, abi: padAbi, functionName: "buy", args: [id, 100_00n], value: tinybarsToWeibars(cost), chain: operatorWallet.chain, account: operatorWallet.account! });
+  // Operator (an ordinary Hedera account) buys 2,200 SDEMO along the curve, reaching the 22 HBAR target.
+  const buyUnits = 2_200_00n;
+  const cost = await pc.readContract({ address: pad.address, abi: padAbi, functionName: "quote", args: [id, buyUnits] });
+  const priceBefore = await pc.readContract({ address: pad.address, abi: padAbi, functionName: "currentPrice", args: [id] });
+  const buyHash = await operatorWallet.writeContract({ address: pad.address, abi: padAbi, functionName: "buy", args: [id, buyUnits], value: tinybarsToWeibars(cost), chain: operatorWallet.chain, account: operatorWallet.account! });
   const buyRcpt = await pc.waitForTransactionReceipt({ hash: buyHash });
   // The relay estimates and simulates against Mirror Node state, which lags consensus: wait until the buy is indexed.
   await M.waitForContractResult(buyHash).catch(() => null);
-  const b: Evidence = { ...l, step: "Operator buys 100 SDEMO for 1 HBAR", actor: `${op.HEDERA_OPERATOR_ID} (EOA buyer)`, input: `buy(${id}, 10000 units) value ${cost} tinybars`, expected: "success; raise reaches the 1 HBAR target", transactionHash: buyHash, transactionId: null, mirrorQuery: resultQuery(buyHash), mirrorResult: null, hcs: null, actual: `status=${buyRcpt.status}`, status: buyRcpt.status === "success" && cost === 100_000_000n ? "PASS" : "FAIL", timestamp: now() };
+  const priceAfter = await pc.readContract({ address: pad.address, abi: padAbi, functionName: "currentPrice", args: [id] });
+  const b: Evidence = { ...l, step: "Operator buys 2,200 SDEMO along the curve", actor: `${op.HEDERA_OPERATOR_ID} (EOA buyer)`, input: `buy(${id}, ${buyUnits} units) value ${cost} tinybars`, expected: "success; price rises; raise ≥ 22 HBAR target", transactionHash: buyHash, transactionId: null, mirrorQuery: resultQuery(buyHash), mirrorResult: null, hcs: null, actual: `status=${buyRcpt.status}; cost=${cost}; price ${priceBefore} → ${priceAfter} tinybars/token`, status: buyRcpt.status === "success" && priceAfter > priceBefore && cost >= params.target ? "PASS" : "FAIL", timestamp: now() };
   out.push(b);
 
   const creatorBefore = (await M.getHbarBalance(account)).tinybars;
-  const gradHash = await operatorWallet.writeContract({ address: pad.address, abi: padAbi, functionName: "graduate", args: [id], chain: operatorWallet.chain, account: operatorWallet.account! });
+  // Creating the pool and minting liquidity through SaucerSwap is HTS-heavy; give it the router's recommended gas.
+  const gradHash = await operatorWallet.writeContract({ address: pad.address, abi: padAbi, functionName: "graduate", args: [id], gas: 4_000_000n, chain: operatorWallet.chain, account: operatorWallet.account! });
   const gradRcpt = await pc.waitForTransactionReceipt({ hash: gradHash });
   await M.waitForContractResult(gradHash).catch(() => null);
   await new Promise(r => setTimeout(r, 6000));
@@ -734,7 +741,13 @@ await flow(12, "Token launchpad: HTS token launch, purchase, one-time graduation
       second = revertData;
     }
   }
-  const g: Evidence = { ...b, step: "Graduation pays the creator exactly once", input: `graduate(${id}) twice`, expected: "creator +1 HBAR once; second graduate reverts AlreadyGraduated", transactionHash: gradHash, mirrorQuery: resultQuery(gradHash), actual: `first status=${gradRcpt.status}, creator delta=${creatorGain}; second: ${second}`, status: gradRcpt.status === "success" && creatorGain === 100_000_000n && /AlreadyGraduated/.test(second) ? "PASS" : "FAIL", timestamp: now() };
+  const after = await pc.readContract({ address: pad.address, abi: padAbi, functionName: "launches", args: [id] });
+  const pairAbi = parseAbi(["function getReserves() view returns (uint112, uint112, uint32)", "function token0() view returns (address)"]);
+  const reserves = after.pair !== "0x0000000000000000000000000000000000000000"
+    ? await pc.readContract({ address: after.pair, abi: pairAbi, functionName: "getReserves" }).catch(() => null)
+    : null;
+  const expectedFee = (cost * 500n) / 10_000n;
+  const g: Evidence = { ...b, step: "Graduation seeds a SaucerSwap V1 pool once and pays the creator fee", input: `graduate(${id}) twice`, expected: "pool created with HBAR + SDEMO reserves, LP locked in the launchpad, creator +5% once; second graduate reverts AlreadyGraduated", transactionHash: gradHash, mirrorQuery: resultQuery(gradHash), mirrorResult: `pool ${longZeroToEntityId(after.pair) ?? after.pair}: reserves ${reserves ? `${reserves[0]} / ${reserves[1]}` : "unreadable"}; pool tokens ${after.poolTokens}`, actual: `first status=${gradRcpt.status}, creator delta=${creatorGain} (5% of raise = ${expectedFee}); second: ${second}`, status: gradRcpt.status === "success" && after.graduated && reserves !== null && reserves[0] > 0n && reserves[1] > 0n && creatorGain >= expectedFee && /AlreadyGraduated/.test(second) ? "PASS" : "FAIL", timestamp: now() };
   out.push(g);
 
   // Contract-initiated airdrops are paid from the launchpad's balance, so the claimer funds the fee (refunded if unspent).
@@ -744,7 +757,7 @@ await flow(12, "Token launchpad: HTS token launch, purchase, one-time graduation
   await new Promise(r => setTimeout(r, 6000));
   const opBal = await M.getTokenBalance(op.HEDERA_OPERATOR_ID, tokenId);
   const pending = (await M.getPendingAirdrops(op.HEDERA_OPERATOR_ID)).filter(a => a.token_id === tokenId);
-  const c: Evidence = { ...b, step: "Buyer claims via HIP-904 airdrop", input: `claim(${id})`, expected: "10000 units delivered or pending (claimable) for the buyer", transactionHash: claimHash, mirrorQuery: `${HEDERA_TESTNET.mirrorUrl}/accounts/${op.HEDERA_OPERATOR_ID}/airdrops/pending`, actual: `status=${claimRcpt.status}; balance=${opBal ?? 0}; pending=${pending.map(p => p.amount).join(",") || "none"}`, status: claimRcpt.status === "success" && (opBal === 10_000n || pending.some(p => p.amount === 10_000)) ? "PASS" : "FAIL", timestamp: now() };
+  const c: Evidence = { ...b, step: "Buyer claims via HIP-904 airdrop", input: `claim(${id})`, expected: `${buyUnits} units delivered or pending (claimable) for the buyer`, transactionHash: claimHash, mirrorQuery: `${HEDERA_TESTNET.mirrorUrl}/accounts/${op.HEDERA_OPERATOR_ID}/airdrops/pending`, actual: `status=${claimRcpt.status}; balance=${opBal ?? 0}; pending=${pending.map(p => p.amount).join(",") || "none"}`, status: claimRcpt.status === "success" && (opBal === buyUnits || pending.some(p => BigInt(p.amount) === buyUnits)) ? "PASS" : "FAIL", timestamp: now() };
   out.push(c);
 
   // Association and HIP-904 fees are charged as gas inside the call; eth_estimateGas misses them, so ask for a floor.
@@ -759,10 +772,11 @@ await flow(12, "Token launchpad: HTS token launch, purchase, one-time graduation
   const cc = fromReceipt(12, "Creator associates and claims unsold + retained supply", creatorClaim, {
     asset: "SDEMO",
     input: "owner intent [associateToken(SDEMO), launchpad.claim]",
-    expected: "account receives 999,900 SDEMO (99,990,000 smallest units: supply minus the 100 tokens sold)",
+    expected: "account receives supply − sold − pool tokens (unsold curve + unused reserve)",
   });
-  cc.actual += `; account SDEMO=${accountTokens}`;
-  if (creatorClaim.status === "success" && accountTokens !== 1_000_000_00n - 100_00n) cc.status = "FAIL";
+  const creatorShare = params.supply - buyUnits - after.poolTokens;
+  cc.actual += `; account SDEMO=${accountTokens} (expected ${creatorShare})`;
+  if (creatorClaim.status === "success" && accountTokens !== creatorShare) cc.status = "FAIL";
   out.push(cc);
   return out;
 });

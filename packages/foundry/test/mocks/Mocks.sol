@@ -2,6 +2,7 @@
 pragma solidity ^0.8.24;
 
 import { ERC20 } from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { Vm } from "forge-std/Vm.sol";
 import { IPriceOracle } from "../../contracts/interfaces/IPriceOracle.sol";
 import { IHederaTokenService } from "../../contracts/interfaces/IHederaTokenService.sol";
@@ -119,9 +120,12 @@ contract MockHederaTokenService {
         lastMaxSupply = token.maxSupply;
         lastKeyCount = token.tokenKeys.length;
         lastInitialSupply = initialTotalSupply;
+        // A real ERC-20 stands in for the HTS facade so approve / transferFrom work in tests.
+        MockERC20 t = new MockERC20(token.name, token.symbol, 2);
+        t.mint(token.treasury, uint256(uint64(initialTotalSupply)));
         (bool ok,) = msg.sender.call{ value: msg.value - CREATE_FEE }("");
         require(ok, "refund failed");
-        return (22, address(uint160(0x70700 + tokensCreated)));
+        return (22, address(t));
     }
 }
 
@@ -253,5 +257,70 @@ contract MockTransferModule is IActionModule {
                 data: abi.encodeWithSignature("transfer(address,uint256)", to, amount * actualMultiplier)
             });
         return (token, to, amount, calls);
+    }
+}
+
+/// Test-only Hedera exchange-rate system contract (etched at 0x168): 10 US cents per HBAR.
+contract MockExchangeRate {
+    function tinycentsToTinybars(uint256 tinycents) external pure returns (uint256) {
+        return tinycents / 10;
+    }
+}
+
+/// Test-only SaucerSwap V1 factory: $2 pool creation fee, like testnet.
+contract MockSaucerSwapV1Factory {
+    uint256 public pairCreateFee = 2e10; // tinycents
+    mapping(address => mapping(address => address)) public getPair;
+    uint256 internal pairs;
+
+    function createPair(address a, address b) external returns (address pair) {
+        require(getPair[a][b] == address(0), "POOL ALREADY EXISTS");
+        pair = address(uint160(0xBA1A000 + ++pairs));
+        getPair[a][b] = pair;
+        getPair[b][a] = pair;
+    }
+}
+
+/// Test-only SaucerSwap V1 router: pays the pool fee from msg.value, pulls tokens into the pair, keeps the HBAR.
+contract MockSaucerSwapV1Router {
+    MockSaucerSwapV1Factory public immutable factory;
+    address public immutable whbar;
+    uint256 public lastHbar;
+    uint256 public lastTokens;
+    address public lastTo;
+
+    constructor(MockSaucerSwapV1Factory factory_, address whbar_) {
+        factory = factory_;
+        whbar = whbar_;
+    }
+
+    function addLiquidityETHNewPool(address token, uint256 amountTokenDesired, uint256, uint256, address to, uint256)
+        external
+        payable
+        returns (uint256, uint256, uint256)
+    {
+        uint256 fee = MockExchangeRate(address(0x168)).tinycentsToTinybars(factory.pairCreateFee());
+        require(msg.value > fee, "UniswapV2Router: MSG.VALUE");
+        address pair = factory.createPair(token, whbar);
+        return _add(token, pair, amountTokenDesired, msg.value - fee, to);
+    }
+
+    function addLiquidityETH(address token, uint256 amountTokenDesired, uint256, uint256, address to, uint256)
+        external
+        payable
+        returns (uint256, uint256, uint256)
+    {
+        address pair = factory.getPair(token, whbar);
+        require(pair != address(0), "no pair");
+        return _add(token, pair, amountTokenDesired, msg.value, to);
+    }
+
+    function _add(address token, address pair, uint256 tokens, uint256 hbar, address to)
+        internal
+        returns (uint256, uint256, uint256)
+    {
+        require(IERC20(token).transferFrom(msg.sender, pair, tokens), "transferFrom");
+        (lastHbar, lastTokens, lastTo) = (hbar, tokens, to);
+        return (tokens, hbar, tokens + hbar);
     }
 }

@@ -203,8 +203,10 @@ export const launchToken = (
     symbol: string;
     decimals: number;
     supply: bigint;
-    forSale: bigint;
-    priceTinybars: bigint;
+    curveSupply: bigint;
+    startPrice: bigint;
+    endPrice: bigint;
+    creatorFeeBps: number;
     target: bigint;
     duration: bigint;
   },
