@@ -65,7 +65,7 @@ agent session key  ──signs typed action─┘     │  validate · dedupe ·
 | `packages/foundry` | `ConsumerAccount` (+ HSS subscriptions, vault deposits, session fee caps), `ConsumerAccountFactory` (account code in SSTORE2 chunks), `SupraPriceOracle`, `SavingsVault`, `TokenLaunchpad`, typed `Actions`, 124 Foundry tests |
 | `packages/sdk` | Framework-independent TypeScript: EIP-712 intents, typed action codecs, payment requests, reason codes, Mirror client, receipts, generated ABIs |
 | `packages/relayer` | Sponsor pipeline (`Sponsor`), x402 `TransferExecutorFacilitator`, standalone HTTP server, HCS auditor |
-| `packages/mcp` | MCP server for AI agents: `get_allowance`, `pay`, `fetch_paid_resource` (x402), `get_audit_log` |
+| `packages/mcp` | MCP server for AI agents: 10 tools (balance, policy, sponsor, payment, payment request, swap-and-pay, x402, vault deposit, receipt, audit log) |
 | `packages/nextjs` | Consumer app: Home, Pay, Request, Recurring, Save, Launch, Activity, Agent, Sponsor, Developer; sponsor + x402 API routes reuse `@sh/relayer` |
 | `scripts` | `doctor`, `bootstrap`, `prove:testnet`, `sponsor:fund`, `check:scaffold` |
 
@@ -117,7 +117,7 @@ Try them in the app (**Agent → Try the scripted demo agent**). The demo agent 
 }
 ```
 
-Tools: `get_allowance` (caps, spent today, expiry, live HBAR/USD), `pay` (HBAR/USDC/WHBAR to `0.0.x` or `0x…`, sponsored), `fetch_paid_resource` (x402 over HTTP, client-side HBAR cap), `get_audit_log` (HCS decisions for this account).
+Tools: `get_balance`, `get_policy` (caps, spent today, expiry, live HBAR/USD), `get_sponsor_status`, `create_payment` (HBAR/USDC/WHBAR to `0.0.x` or `0x…`, sponsored), `create_payment_request` (signed link for someone to pay the account), `swap_and_pay` (SaucerSwap exact-output), `purchase_x402` (x402 over HTTP, client-side HBAR cap), `deposit_vault`, `get_receipt` (Mirror Node), `get_audit_log` (HCS). There is no arbitrary-call tool: MCP describes what the agent may request; the account decides what executes.
 
 ## x402
 

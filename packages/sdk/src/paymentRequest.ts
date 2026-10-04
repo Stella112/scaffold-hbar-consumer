@@ -106,12 +106,13 @@ export function decodePaymentRequest(encoded: string): SignedPaymentRequest {
 }
 
 export type PaymentRequestCheck =
-  | { valid: true; signer: Address; signerRole: "recipient" | "recipient-account-owner" }
+  | { valid: true; signer: Address; signerRole: "recipient" | "recipient-account-owner" | "recipient-account-session" }
   | { valid: false; reason: "EXPIRED" | "WRONG_NETWORK" | "SIGNER_NOT_RECIPIENT" };
 
 /**
  * A request is valid when it is unexpired, on the expected chain, and signed by the recipient itself or by the
- * owner of the recipient ConsumerAccount (checked on-chain when a client is given).
+ * owner of the recipient ConsumerAccount, or by a live session key of that account, e.g. an AI agent (checked on-chain
+ * when a client is given). Requesting money moves no funds, so any live session may ask on the account's behalf.
  */
 export async function verifyPaymentRequest(
   signed: SignedPaymentRequest,
@@ -134,6 +135,19 @@ export async function verifyPaymentRequest(
       .readContract({ address: request.recipient, abi: consumerAccountAbi, functionName: "owner" })
       .catch(() => null);
     if (owner && getAddress(owner) === signer) return { valid: true, signer, signerRole: "recipient-account-owner" };
+    if (owner) {
+      const [session, ownerEpoch] = await Promise.all([
+        opts.client
+          .readContract({ address: request.recipient, abi: consumerAccountAbi, functionName: "getSession", args: [signer] })
+          .catch(() => null),
+        opts.client
+          .readContract({ address: request.recipient, abi: consumerAccountAbi, functionName: "ownerEpoch" })
+          .catch(() => null),
+      ]);
+      if (session && session.epoch !== 0n && session.ownerEpoch === ownerEpoch && session.expiresAt > now) {
+        return { valid: true, signer, signerRole: "recipient-account-session" };
+      }
+    }
   }
   return { valid: false, reason: "SIGNER_NOT_RECIPIENT" };
 }

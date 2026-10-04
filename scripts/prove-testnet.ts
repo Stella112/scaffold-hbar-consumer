@@ -430,30 +430,30 @@ await flow(7, "AI agent via MCP against the deployed app", async () => {
   });
   const out: Evidence[] = [];
 
-  const allowance = await call("get_allowance");
-  const a = base("MCP get_allowance", "tool get_allowance", "caps $1.00 / $3.00 and a live HBAR price");
+  const allowance = await call("get_policy");
+  const a = base("MCP get_policy", "tool get_policy", "caps $1.00 / $3.00 and a live HBAR price");
   a.actual = JSON.stringify(allowance.out);
   a.status = !allowance.isError && allowance.out.perPaymentCap === "$1.00" && /^\$0\.\d+/.test(String(allowance.out.hbarUsd)) ? "PASS" : "FAIL";
   out.push(a);
 
   const merchantBefore = (await M.getHbarBalance(roles.MERCHANT_ACCOUNT_ID)).tinybars;
-  const pay = await call("pay", { to: roles.MERCHANT_ACCOUNT_ID, amount: "0.2", asset: "HBAR" });
+  const pay = await call("create_payment", { to: roles.MERCHANT_ACCOUNT_ID, amount: "0.2", asset: "HBAR" });
   await new Promise(r => setTimeout(r, 6000));
   const delta = (await M.getHbarBalance(roles.MERCHANT_ACCOUNT_ID)).tinybars - merchantBefore;
-  const p = base("MCP pay (sponsored by the deployed app)", `tool pay { to: ${roles.MERCHANT_ACCOUNT_ID}, amount: 0.2 HBAR }`, "success; merchant +20000000 tinybars");
+  const p = base("MCP create_payment (sponsored by the deployed app)", `tool create_payment { to: ${roles.MERCHANT_ACCOUNT_ID}, amount: 0.2 HBAR }`, "success; merchant +20000000 tinybars");
   p.transactionId = pay.out.transactionId ?? null;
   p.actual = `status=${pay.out.status} ${pay.out.reasonCode ?? ""}; merchant delta=${delta}`;
   p.status = pay.out.status === "success" && delta === 20_000_000n ? "PASS" : "FAIL";
   out.push(p);
 
-  const over = await call("pay", { to: roles.MERCHANT_ACCOUNT_ID, amount: "50", asset: "HBAR" });
-  const o = base("MCP pay over the cap", "tool pay { amount: 50 HBAR } (≈ $5 > $1 cap)", "denied PER_CALL_CAP_EXCEEDED, reason returned to the model");
+  const over = await call("create_payment", { to: roles.MERCHANT_ACCOUNT_ID, amount: "50", asset: "HBAR" });
+  const o = base("MCP create_payment over the cap", "tool create_payment { amount: 50 HBAR } (≈ $5 > $1 cap)", "denied PER_CALL_CAP_EXCEEDED, reason returned to the model");
   o.actual = `isError=${over.isError} status=${over.out.status} ${over.out.reasonCode ?? ""}`;
   o.status = over.isError && over.out.reasonCode === "PER_CALL_CAP_EXCEEDED" ? "PASS" : "FAIL";
   out.push(o);
 
-  const paid = await call("fetch_paid_resource", { url: `${appUrl.replace(/\/$/, "")}/api/x402/premium`, maxHbar: "0.1" });
-  const x = base("MCP fetch_paid_resource (x402 over HTTP)", "tool fetch_paid_resource { url: /api/x402/premium }", "402 → paid → 200 with live HBAR/USD data");
+  const paid = await call("purchase_x402", { url: `${appUrl.replace(/\/$/, "")}/api/x402/premium`, maxHbar: "0.1" });
+  const x = base("MCP purchase_x402 (x402 over HTTP)", "tool purchase_x402 { url: /api/x402/premium }", "402 → paid → 200 with live HBAR/USD data");
   x.transactionId = paid.out.settlement?.transaction ?? null;
   x.mirrorQuery = x.transactionId ? `${HEDERA_TESTNET.mirrorUrl}/transactions/${toMirrorTransactionId(x.transactionId)}` : null;
   x.actual = `status=${paid.out.status} paid=${paid.out.paid} data=${JSON.stringify(paid.out.body).slice(0, 160)}`;

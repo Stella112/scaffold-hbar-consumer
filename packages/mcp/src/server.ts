@@ -9,6 +9,12 @@ import {
   X402_HEDERA_TESTNET,
   buildSessionAction,
   encodePayment,
+  encodePaymentRequest,
+  encodeSwapToPay,
+  encodeVaultDeposit,
+  exactOutputPath,
+  signPaymentRequest,
+  weibarsToTinybars,
   entityIdToLongZero,
   hashscanTx,
   isEntityId,
@@ -29,8 +35,10 @@ import {
   getAddress,
   http,
   isAddress,
+  formatUnits,
   parseAbi,
   parseUnits,
+  type Hex,
 } from "viem";
 import { z } from "zod";
 
@@ -47,6 +55,12 @@ export type ConsumerMcpConfig = {
   maxX402Tinybars?: bigint;
   fetchImpl?: typeof fetch;
 };
+
+const erc20Abi = parseAbi(["function balanceOf(address) view returns (uint256)"]);
+const vaultAbi = parseAbi(["function convertToAssets(uint256 shares) view returns (uint256)"]);
+const quoterAbi = parseAbi([
+  "function quoteExactOutputSingle((address tokenIn,address tokenOut,uint256 amount,uint24 fee,uint160 sqrtPriceLimitX96)) returns (uint256 amountIn,uint160 sqrtPriceX96After,uint32 initializedTicksCrossed,uint256 gasEstimate)",
+]);
 
 const ASSETS = { HBAR: { decimals: 8 }, USDC: { decimals: 6 }, WHBAR: { decimals: 8 } } as const;
 type AssetSymbol = keyof typeof ASSETS;
@@ -84,10 +98,80 @@ export function createConsumerMcpServer(cfg: ConsumerMcpConfig): McpServer {
     return t.address ?? entityIdToLongZero(t.tokenId);
   };
 
+  /** Signs a typed session action with the agent key and submits it through the app's sponsor. */
+  const sendAction = async (actionId: Hex, actionData: Hex) => {
+    const action = buildSessionAction(actionId, actionData);
+    const signature = await signSessionAction(cfg.agent, chainId, cfg.account, action);
+    const res = await fetchImpl(`${appUrl}/api/sponsor`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(toSponsorRequest.sessionAction(chainId, cfg.account, action, signature), bigintSafe),
+    });
+    const body = (await res.json()) as { receipt?: Record<string, unknown>; error?: string };
+    if (!body.receipt) return text(`Sponsor unavailable: ${body.error ?? res.status}`, true);
+    const r = body.receipt;
+    return text(
+      {
+        status: r.status,
+        reasonCode: r.reasonCode ?? null,
+        deniedBy: r.deniedBy ?? null,
+        detail: r.detail ?? null,
+        transactionId: r.transactionId ?? null,
+        hashscan: r.transactionId ? hashscanTx(toMirrorTransactionId(String(r.transactionId))) : null,
+        hcsAudit: r.hcsAudit ?? null,
+      },
+      r.status !== "success",
+    );
+  };
+  const tokenBalance = (token: Address) =>
+    publicClient
+      .readContract({ address: token, abi: erc20Abi, functionName: "balanceOf", args: [cfg.account] })
+      .catch(() => 0n);
+
   server.registerTool(
-    "get_allowance",
+    "get_balance",
     {
-      title: "Get spending allowance",
+      title: "Get account balances",
+      description: "HBAR, token and savings-vault balances of the ConsumerAccount this agent works for.",
+      annotations: { readOnlyHint: true, openWorldHint: true },
+    },
+    async () => {
+      const hbar = weibarsToTinybars(await publicClient.getBalance({ address: cfg.account }));
+      const tokens: Record<string, string> = {};
+      for (const [sym, t] of Object.entries(testnetDeployment.tokens ?? {})) {
+        tokens[sym] = formatUnits(await tokenBalance(t.address), t.decimals);
+      }
+      const vaults: Record<string, string> = {};
+      for (const [sym, v] of Object.entries(testnetDeployment.vaults ?? {})) {
+        const shares = await tokenBalance(v.address);
+        const assets = shares
+          ? await publicClient.readContract({ address: v.address, abi: vaultAbi, functionName: "convertToAssets", args: [shares] })
+          : 0n;
+        vaults[sym] = formatUnits(assets, testnetDeployment.tokens?.[sym]?.decimals ?? 8);
+      }
+      return text({ account: cfg.account, hbar: formatUnits(hbar, 8), tokens, savings: vaults });
+    },
+  );
+
+  server.registerTool(
+    "get_sponsor_status",
+    {
+      title: "Get sponsor status",
+      description: "Whether the app's sponsor can pay this agent's network fees: balance, daily budget and spend.",
+      annotations: { readOnlyHint: true, openWorldHint: true },
+    },
+    async () => {
+      const res = await fetchImpl(`${appUrl}/api/sponsor/status`);
+      const body = (await res.json()) as Record<string, unknown>;
+      const { deployment: _deployment, ...status } = body;
+      return text(status, !res.ok);
+    },
+  );
+
+  server.registerTool(
+    "get_policy",
+    {
+      title: "Get spending policy",
       description:
         "Shows what this agent may spend from the account right now: per-payment and daily USD caps, amount spent " +
         "today, expiry, whether recipients are restricted, and the live HBAR/USD price used to value payments.",
@@ -125,7 +209,7 @@ export function createConsumerMcpServer(cfg: ConsumerMcpConfig): McpServer {
   );
 
   server.registerTool(
-    "pay",
+    "create_payment",
     {
       title: "Pay from the account",
       description:
@@ -142,26 +226,7 @@ export function createConsumerMcpServer(cfg: ConsumerMcpConfig): McpServer {
       try {
         const recipient = await resolveRecipient(to);
         const units = parseUnits(amount, ASSETS[asset].decimals);
-        const action = buildSessionAction(ACTION_IDS.payment, encodePayment({ asset: assetAddress(asset), to: recipient, amount: units }));
-        const signature = await signSessionAction(cfg.agent, chainId, cfg.account, action);
-        const res = await fetchImpl(`${appUrl}/api/sponsor`, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(toSponsorRequest.sessionAction(chainId, cfg.account, action, signature), bigintSafe),
-        });
-        const body = (await res.json()) as { receipt?: Record<string, unknown>; error?: string };
-        if (!body.receipt) return text(`Sponsor unavailable: ${body.error ?? res.status}`, true);
-        const r = body.receipt;
-        const summary = {
-          status: r.status,
-          reasonCode: r.reasonCode ?? null,
-          deniedBy: r.deniedBy ?? null,
-          detail: r.detail ?? null,
-          transactionId: r.transactionId ?? null,
-          hashscan: r.transactionId ? hashscanTx(toMirrorTransactionId(String(r.transactionId))) : null,
-          hcsAudit: r.hcsAudit ?? null,
-        };
-        return text(summary, r.status !== "success");
+        return await sendAction(ACTION_IDS.payment, encodePayment({ asset: assetAddress(asset), to: recipient, amount: units }));
       } catch (e) {
         return text((e as Error).message, true);
       }
@@ -169,7 +234,140 @@ export function createConsumerMcpServer(cfg: ConsumerMcpConfig): McpServer {
   );
 
   server.registerTool(
-    "fetch_paid_resource",
+    "create_payment_request",
+    {
+      title: "Create a payment request",
+      description:
+        "Creates a signed request for someone to pay this account (link + payload). Signed with the agent's session " +
+        "key; apps verify it against the account on-chain. Requesting money moves no funds.",
+      inputSchema: {
+        amount: z.string().regex(/^\d+(\.\d+)?$/),
+        asset: z.enum(["HBAR", "USDC", "WHBAR"]).default("HBAR"),
+        memo: z.string().max(140).default(""),
+        expiresInMinutes: z.number().int().min(1).max(10_080).default(60),
+      },
+      annotations: { readOnlyHint: true, openWorldHint: false },
+    },
+    async ({ amount, asset, memo, expiresInMinutes }) => {
+      try {
+        const request = {
+          chainId,
+          recipient: cfg.account,
+          asset: assetAddress(asset),
+          amount: parseUnits(amount, ASSETS[asset].decimals),
+          memo,
+          expiresAt: BigInt(Math.floor(Date.now() / 1000) + expiresInMinutes * 60),
+          referenceId: Math.random().toString(16).slice(2, 10),
+        };
+        const signed = await signPaymentRequest(cfg.agent, request);
+        const encoded = encodePaymentRequest(signed);
+        return text({ link: `${appUrl}/pay?r=${encoded}`, request: { ...request, amount, asset } });
+      } catch (e) {
+        return text((e as Error).message, true);
+      }
+    },
+  );
+
+  server.registerTool(
+    "swap_and_pay",
+    {
+      title: "Swap and pay",
+      description:
+        "Pays exactly `amountOut` of the asset the recipient wants, swapping from WHBAR through SaucerSwap V2. Quotes " +
+        "live, allows 2% slippage, and the account reverts unless the recipient receives the exact amount. The owner " +
+        "must have allowed the SaucerSwap router and granted swap-to-pay.",
+      inputSchema: {
+        to: z.string().describe("Recipient Hedera account id (0.0.x) or EVM address"),
+        amountOut: z.string().regex(/^\d+(\.\d+)?$/).describe("Exact amount the recipient receives"),
+        assetOut: z.enum(["USDC"]).default("USDC"),
+      },
+      annotations: { openWorldHint: true },
+    },
+    async ({ to, amountOut, assetOut }) => {
+      try {
+        const ss = testnetDeployment.saucerswap;
+        if (!ss) return text("SAUCERSWAP_QUOTE_UNAVAILABLE: no SaucerSwap config in this deployment", true);
+        const recipient = await resolveRecipient(to);
+        const tokenOut = assetAddress(assetOut);
+        const tokenIn = assetAddress("WHBAR");
+        const out = parseUnits(amountOut, ASSETS[assetOut].decimals);
+        const quote = (await publicClient
+          .readContract({
+            address: ss.quoter,
+            abi: quoterAbi,
+            functionName: "quoteExactOutputSingle",
+            args: [{ tokenIn, tokenOut, amount: out, fee: 3000, sqrtPriceLimitX96: 0n }],
+          })
+          .catch(() => null)) as readonly [bigint] | null;
+        if (!quote) return text("SAUCERSWAP_QUOTE_UNAVAILABLE: no route or liquidity for this pair", true);
+        return await sendAction(
+          ACTION_IDS.swapToPay,
+          encodeSwapToPay({
+            router: ss.router,
+            tokenIn,
+            amountInMaximum: (quote[0] * 10_200n) / 10_000n,
+            tokenOut,
+            amountOut: out,
+            to: recipient,
+            deadline: BigInt(Math.floor(Date.now() / 1000) + 300),
+            path: exactOutputPath([tokenOut, tokenIn], [3000]),
+          }),
+        );
+      } catch (e) {
+        return text((e as Error).message, true);
+      }
+    },
+  );
+
+  server.registerTool(
+    "deposit_vault",
+    {
+      title: "Deposit into savings",
+      description:
+        "Deposits WHBAR into the owner-approved savings vault (typed vault-deposit, counted against the agent's caps). " +
+        "Agents can never withdraw; only the owner can.",
+      inputSchema: { amount: z.string().regex(/^\d+(\.\d+)?$/).describe("WHBAR to deposit") },
+      annotations: { openWorldHint: true },
+    },
+    async ({ amount }) => {
+      const vault = testnetDeployment.vaults?.WHBAR;
+      if (!vault) return text("No savings vault in this deployment.", true);
+      try {
+        return await sendAction(ACTION_IDS.vaultDeposit, encodeVaultDeposit({ vault: vault.address, assets: parseUnits(amount, 8) }));
+      } catch (e) {
+        return text((e as Error).message, true);
+      }
+    },
+  );
+
+  server.registerTool(
+    "get_receipt",
+    {
+      title: "Get a transaction receipt",
+      description: "Looks up a Hedera transaction (0.0.x@s.n or 0.0.x-s-n) on Mirror Node: result, fee and transfers.",
+      inputSchema: { transactionId: z.string().regex(/^0\.0\.\d+[@-]\d+[.-]\d+$/) },
+      annotations: { readOnlyHint: true, openWorldHint: true },
+    },
+    async ({ transactionId }) => {
+      const id = toMirrorTransactionId(transactionId);
+      const records = await mirror.getTransactionRecords(id);
+      if (!records.length) return text(`No record for ${id} yet (Mirror Node lags a few seconds).`, true);
+      return text({
+        transactionId: id,
+        hashscan: hashscanTx(id),
+        records: records.map(r => ({
+          result: r.result,
+          consensusTimestamp: r.consensus_timestamp,
+          chargedFeeTinybars: r.charged_tx_fee,
+          transfers: r.transfers,
+          tokenTransfers: r.token_transfers,
+        })),
+      });
+    },
+  );
+
+  server.registerTool(
+    "purchase_x402",
     {
       title: "Fetch an x402 paid resource",
       description:
