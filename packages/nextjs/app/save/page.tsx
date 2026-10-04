@@ -6,6 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { NextPage } from "next";
 import type { Address } from "viem";
 import { AccountGate } from "~~/components/consumer/AccountGate";
+import { FundAccount } from "~~/components/consumer/FundAccount";
 import { ReceiptCard } from "~~/components/consumer/ReceiptCard";
 import { saveReceipt } from "~~/services/consumer/activity";
 import type { SponsorResponse } from "~~/services/consumer/client";
@@ -35,7 +36,7 @@ const SavePage: NextPage = () => {
         </div>
       ) : (
         <AccountGate>
-          {({ controller, account }) => (
+          {({ controller, account, refresh }) => (
             <Position account={account.address} vault={vault.address} asset={vault.asset}>
               {pos => {
                 const run = async (label: string, fn: () => Promise<SponsorResponse>) => {
@@ -74,6 +75,18 @@ const SavePage: NextPage = () => {
                     <div className="card bg-base-100 shadow">
                       <div className="card-body gap-3">
                         <h2 className="font-semibold">Save</h2>
+                        <FundAccount
+                          account={account.address}
+                          balanceTinybars={account.hbarTinybars}
+                          needTinybars={100_000_000n}
+                          what="Wrapping HBAR to save"
+                          onFunded={refresh}
+                        />
+                        {(pos.data?.liquid ?? 0n) < parseUnits(amount || "0", 8) ? (
+                          <div className="alert alert-warning text-xs">
+                            You have {formatUnits(pos.data?.liquid ?? 0n, 8, 4)} WHBAR. Wrap some HBAR below first.
+                          </div>
+                        ) : null}
                         <div className="join w-full">
                           <input
                             className="input input-bordered join-item w-full"
@@ -82,7 +95,7 @@ const SavePage: NextPage = () => {
                           />
                           <button
                             className="btn btn-primary join-item"
-                            disabled={busy !== null}
+                            disabled={busy !== null || (pos.data?.liquid ?? 0n) < parseUnits(amount || "0", 8)}
                             onClick={() =>
                               run("save", () =>
                                 vaultDeposit(controller, account.address, vault.address, parseUnits(amount, 8)),

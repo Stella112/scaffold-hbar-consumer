@@ -14,6 +14,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { NextPage } from "next";
 import { type Address, getAddress, isAddress } from "viem";
 import { AccountGate } from "~~/components/consumer/AccountGate";
+import { FundAccount } from "~~/components/consumer/FundAccount";
 import { ReceiptCard } from "~~/components/consumer/ReceiptCard";
 import { saveReceipt } from "~~/services/consumer/activity";
 import { type SponsorResponse, publicClient } from "~~/services/consumer/client";
@@ -47,7 +48,7 @@ const RecurringPage: NextPage = () => {
         </p>
       </div>
       <AccountGate>
-        {({ controller, account }) => (
+        {({ controller, account, refresh }) => (
           <Subscriptions account={account.address}>
             {subs => (
               <div className="w-full max-w-xl flex flex-col gap-4">
@@ -91,6 +92,16 @@ const RecurringPage: NextPage = () => {
                       {formatUnits(FEE_RESERVE_TINYBARS_PER_PAYMENT * BigInt(Math.max(1, Number(count) || 1)), 8, 2)}{" "}
                       HBAR extra for fees. Balance: {formatUnits(account.hbarTinybars, 8, 4)} HBAR.
                     </p>
+                    <FundAccount
+                      account={account.address}
+                      balanceTinybars={account.hbarTinybars}
+                      needTinybars={
+                        FEE_RESERVE_TINYBARS_PER_PAYMENT * BigInt(Math.max(1, Number(count) || 1)) +
+                        parseUnits(amount || "0", 8) * BigInt(Math.max(1, Number(count) || 1))
+                      }
+                      what="These scheduled payments (amounts + fees)"
+                      onFunded={refresh}
+                    />
                     {error ? <div className="alert alert-error text-xs">{error}</div> : null}
                     <button
                       className="btn btn-primary"

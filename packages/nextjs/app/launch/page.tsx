@@ -5,6 +5,7 @@ import { longZeroToEntityId, testnetDeployment, tokenLaunchpadAbi } from "@sh/sd
 import { useQuery } from "@tanstack/react-query";
 import type { NextPage } from "next";
 import { AccountGate } from "~~/components/consumer/AccountGate";
+import { FundAccount } from "~~/components/consumer/FundAccount";
 import { ReceiptCard } from "~~/components/consumer/ReceiptCard";
 import { saveReceipt } from "~~/services/consumer/activity";
 import { type SponsorResponse, publicClient } from "~~/services/consumer/client";
@@ -13,7 +14,7 @@ import { formatUnits, parseUnits, shortAddr } from "~~/services/consumer/format"
 
 const pad = testnetDeployment.launchpad;
 /** HBAR sent to cover the HTS token-creation fee (about $1); the unspent part is refunded. */
-const CREATION_FEE_TINYBARS = 3_000_000_000n;
+const CREATION_FEE_TINYBARS = 2_000_000_000n;
 
 const LaunchPage: NextPage = () => {
   const [form, setForm] = useState({
@@ -78,7 +79,7 @@ const LaunchPage: NextPage = () => {
         </div>
       ) : (
         <AccountGate>
-          {({ controller, account }) => {
+          {({ controller, account, refresh }) => {
             const run = async (label: string, fn: () => Promise<SponsorResponse>) => {
               setBusy(label);
               const r = await fn();
@@ -106,9 +107,18 @@ const LaunchPage: NextPage = () => {
                       {formatUnits(CREATION_FEE_TINYBARS, 8, 0)} HBAR is sent and the rest comes back). Balance:{" "}
                       {formatUnits(account.hbarTinybars, 8, 2)} HBAR. Tokens use 2 decimals.
                     </p>
+                    <FundAccount
+                      account={account.address}
+                      balanceTinybars={account.hbarTinybars}
+                      needTinybars={CREATION_FEE_TINYBARS}
+                      what="Launching a token"
+                      onFunded={refresh}
+                    />
                     <button
                       className="btn btn-primary"
-                      disabled={busy !== null || !form.name || !form.symbol}
+                      disabled={
+                        busy !== null || !form.name || !form.symbol || account.hbarTinybars < CREATION_FEE_TINYBARS
+                      }
                       onClick={() =>
                         run("launch", () =>
                           launchToken(

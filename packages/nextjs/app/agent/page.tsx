@@ -6,6 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { NextPage } from "next";
 import { type Address, getAddress, isAddress } from "viem";
 import { AccountGate } from "~~/components/consumer/AccountGate";
+import { FundAccount } from "~~/components/consumer/FundAccount";
 import { ReceiptCard } from "~~/components/consumer/ReceiptCard";
 import { saveReceipt } from "~~/services/consumer/activity";
 import { type ReceiptJson, type SponsorResponse, publicClient } from "~~/services/consumer/client";
@@ -48,7 +49,7 @@ const AgentPage: NextPage = () => {
     <div className="flex flex-col items-center grow px-4 py-10 gap-6">
       <h1 className="text-2xl font-bold">Agent</h1>
       <AccountGate>
-        {({ controller, account }) => (
+        {({ controller, account, refresh }) => (
           <AgentPanel
             account={account.address}
             agent={isAddress(agentAddr) ? getAddress(agentAddr) : null}
@@ -170,6 +171,13 @@ const AgentPage: NextPage = () => {
                   <div className="card bg-base-100 shadow">
                     <div className="card-body gap-3">
                       <h2 className="font-semibold">Try the scripted demo agent</h2>
+                      <FundAccount
+                        account={account.address}
+                        balanceTinybars={account.hbarTinybars}
+                        needTinybars={100_000_000n}
+                        what="The demo agent's payments"
+                        onFunded={refresh}
+                      />
                       <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                         {SCENARIOS.map(s => (
                           <button

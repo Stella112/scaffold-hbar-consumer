@@ -3,6 +3,7 @@
 import Link from "next/link";
 import type { NextPage } from "next";
 import { AccountGate } from "~~/components/consumer/AccountGate";
+import { FundAccount } from "~~/components/consumer/FundAccount";
 import { formatUnits, shortAddr } from "~~/services/consumer/format";
 
 const Home: NextPage = () => (
@@ -12,7 +13,7 @@ const Home: NextPage = () => (
       <p className="opacity-70 mt-2">Pay, request money and let agents spend safely. You never need HBAR for fees.</p>
     </div>
     <AccountGate>
-      {({ account, controller }) => (
+      {({ account, controller, refresh }) => (
         <div className="card bg-base-100 shadow w-full max-w-xl">
           <div className="card-body gap-4">
             <div className="flex justify-between items-start">
@@ -37,6 +38,13 @@ const Home: NextPage = () => (
                 — the sponsor pays network fees.
               </span>
             </div>
+            <FundAccount
+              account={account.address}
+              balanceTinybars={account.hbarTinybars}
+              needTinybars={500_000_000n}
+              what="Paying, saving, launching and the demo agent"
+              onFunded={refresh}
+            />
             <div className="grid grid-cols-2 gap-3">
               <Link href="/pay" className="btn btn-primary">
                 Pay
