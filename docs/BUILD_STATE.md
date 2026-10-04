@@ -32,7 +32,7 @@
 
 | Item | ID |
 | --- | --- |
-| ConsumerAccountFactory | 0.0.10848625 (`0x6a882cd5a6f13960eefcd1290282e550eef81aae`) |
+| ConsumerAccountFactory | 0.0.10853888 (`0x3894bc8ed3c285a285566c352a674223dcf379af`); account code in 3 SSTORE2 chunks |
 | SupraPriceOracle | 0.0.10844780 |
 | SavingsVault (WHBAR) | 0.0.10848627 |
 | TokenLaunchpad | 0.0.10848836 |

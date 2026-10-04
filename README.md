@@ -34,7 +34,7 @@ npx create-scaffold-hbar@latest --template Stella112/scaffold-hbar-consumer
 
 Results are in the committed [`TESTNET_VERIFICATION.md`](TESTNET_VERIFICATION.md). Nothing in it is hand-written.
 
-Reference testnet deployment (source-verified on Sourcify): ConsumerAccountFactory FACTORY_PLACEHOLDER, SupraPriceOracle [0.0.10844780](https://hashscan.io/testnet/contract/0.0.10844780), SavingsVault [0.0.10848627](https://hashscan.io/testnet/contract/0.0.10848627), TokenLaunchpad [0.0.10848836](https://hashscan.io/testnet/contract/0.0.10848836), HCS audit topic [0.0.10841526](https://hashscan.io/testnet/topic/0.0.10841526), sponsor [0.0.10841387](https://hashscan.io/testnet/account/0.0.10841387).
+Reference testnet deployment (source-verified on Sourcify): ConsumerAccountFactory [0.0.10853888](https://hashscan.io/testnet/contract/0.0.10853888), SupraPriceOracle [0.0.10844780](https://hashscan.io/testnet/contract/0.0.10844780), SavingsVault [0.0.10848627](https://hashscan.io/testnet/contract/0.0.10848627), TokenLaunchpad [0.0.10848836](https://hashscan.io/testnet/contract/0.0.10848836), HCS audit topic [0.0.10841526](https://hashscan.io/testnet/topic/0.0.10841526), sponsor [0.0.10841387](https://hashscan.io/testnet/account/0.0.10841387).
 
 ## Quickstart
 
