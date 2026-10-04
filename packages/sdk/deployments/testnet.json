@@ -1,7 +1,7 @@
 {
   "network": "testnet",
   "chainId": 296,
-  "updatedAt": "2026-10-04T16:49:44.183Z",
+  "updatedAt": "2026-10-04T17:25:15.026Z",
   "factory": "0x2c952374e796f2f42053ba20a5417abb10ba752f",
   "factoryContractId": "0.0.10859678",
   "auditTopicId": "0.0.10841526",
@@ -45,9 +45,9 @@
     }
   },
   "launchpad": {
-    "address": "0xf76869013319203e5dadd3ead6ecf40df5d2a6bd",
-    "contractId": "0.0.10859400",
-    "codeHash": "0x380f33fcefc4aa740f063f58cce80d0b87c78905306abeed4d59a08923d594bb"
+    "address": "0xc8539854440f52dab7afee097d9798f32887ee09",
+    "contractId": "0.0.10860013",
+    "codeHash": "0xb1c6c5b3d01f208d82824f5e7483f7f75032579b9dde2284d6802201df28c181"
   },
   "accountCodeChunks": [
     "0x1a3eeda35dd0f1db9c71c29985a24e89f4b9ae43",
@@ -55,9 +55,9 @@
   ],
   "actionModules": {
     "launchpadBuy": {
-      "address": "0xc63b1e8e983e48524a4aa3f45a5a388da003ecec",
-      "contractId": "0.0.10859402",
-      "codeHash": "0xb8a20939edbba1e507c781e40c8a3f7b10e90a084972062762223bb7e469a22e"
+      "address": "0xe13ade41756042c23abb8fcc7693d4e0296ec968",
+      "contractId": "0.0.10860015",
+      "codeHash": "0x6c8c1f7db65e0f8b1696f5a1e5dbd40b65401f51016933a020c887596cd2d774"
     }
   }
 }
