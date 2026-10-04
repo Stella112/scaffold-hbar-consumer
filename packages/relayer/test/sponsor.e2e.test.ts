@@ -13,9 +13,9 @@ import {
   RESERVED_ACTION_IDS,
   buildOwnerIntent,
   buildSessionAction,
+  accountCodeChunks,
   consumerAccountAbi,
   consumerAccountFactoryAbi,
-  consumerAccountBytecode,
   consumerAccountFactoryBytecode,
   encodePayment,
   selfCall,
@@ -78,13 +78,17 @@ describe.skipIf(!hasAnvil)("sponsor pipeline (anvil)", () => {
         await new Promise(r => setTimeout(r, 200));
       }
     }
-    // Account implementation first; the factory deploys EIP-1167 clones of it.
-    const implHash = await walletClient.deployContract({ abi: consumerAccountAbi, bytecode: consumerAccountBytecode, args: [] });
-    const implementation = (await publicClient.waitForTransactionReceipt({ hash: implHash })).contractAddress!;
+    // ConsumerAccount's creation code goes into data-contract chunks; the factory reassembles it.
+    const { chunks, codeHash } = accountCodeChunks();
+    const chunkAddresses: `0x${string}`[] = [];
+    for (const data of chunks) {
+      const h = await walletClient.sendTransaction({ data });
+      chunkAddresses.push((await publicClient.waitForTransactionReceipt({ hash: h })).contractAddress as `0x${string}`);
+    }
     const hash = await walletClient.deployContract({
       abi: consumerAccountFactoryAbi,
       bytecode: consumerAccountFactoryBytecode,
-      args: [implementation, HBAR],
+      args: [chunkAddresses, codeHash, HBAR],
     });
     factory = (await publicClient.waitForTransactionReceipt({ hash })).contractAddress!;
     sponsor = make();

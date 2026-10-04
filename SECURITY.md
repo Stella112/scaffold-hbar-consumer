@@ -45,20 +45,28 @@ Session spend is priced in USD (6 decimals) through `IPriceOracle`. No oracle, a
 ## HTS / HSS caveats
 
 - HTS system-contract calls return response codes; every call is checked (`HtsCallFailed`).
-- Recipients must be associated to receive tokens; unassociated recipients get HIP-904 pending airdrops. The airdrop fee is charged to the calling contract's own HBAR (the sponsor pays only gas); see the known limitation below.
+- Recipients must be associated to receive tokens; unassociated recipients get HIP-904 pending airdrops. The airdrop fee is charged to the calling contract's own HBAR (the sponsor pays only gas) and, for sessions, counts against the caps.
 - Swap-to-pay checks the recipient's balance increased by at least `amountOut` and that no more than `amountInMaximum` was spent; the router approval is reset to zero afterwards.
 - HSS recurring payments: creation and cancellation are owner-only; `executeSubscription` is permissionless but can only pay the owner-configured recipient and amount, once due. Scheduled executions are paid by the account (~2M gas each).
 - Savings vault: sessions may only deposit (`vault-deposit`, USD-capped, owner-allowlisted vaults). Shares of any vault ever allowed are untransferable for sessions through every action (`WithdrawForbidden`).
 - Launchpad tokens are created with no keys and a fixed supply; graduation pays the creator once; claims fund their own airdrop fee.
 
-## Known limitation: airdrop fees are outside session caps
+## Network fees count against session caps
 
-A session's USD caps price the *tokens* an action moves. A HIP-904 `airdrop` action also makes the account pay the
-airdrop fee from its own HBAR (~1 HBAR per pending airdrop on testnet; see `docs/HEDERA_GOTCHAS.md`), and that fee is
-not charged against the caps. A session holding the `airdrop` action could therefore spend the account's HBAR on
-fees beyond its limits. The app never grants `airdrop` to agents (Agent page grants `payment`, `x402-payment` and
-`vault-deposit`); do not grant it to sessions you do not trust. Closing this on-chain (pricing the fee into the cap)
-needs an account change that does not fit the current factory size margin; see `docs/DECISIONS.md`.
+Some actions make the network charge the account itself: a HIP-904 airdrop's fee (~1 HBAR per pending airdrop on
+testnet) is taken from the calling contract's HBAR (see `docs/HEDERA_GOTCHAS.md`). For every session action and
+session-signed x402 transfer, the account measures its HBAR balance before and after; anything beyond the HBAR the
+action meant to send is priced by the oracle and charged to the same per-call and daily caps
+(`SessionFeeCharged`). Exceeding a cap, or an unpriceable fee, reverts the whole action. Proven on testnet (flow 13).
+
+## Account deployment
+
+Accounts are full `ConsumerAccount` contracts deployed with CREATE2 by the factory, with the owner fixed in the
+constructor and part of the salt (no initialization to front-run; the factory keeps no authority). The account's
+creation code is stored in small data contracts (SSTORE2 pattern, STOP-prefixed so calling them does nothing) and
+reassembled by the factory, whose constructor checks the code hash. Accounts are deliberately not proxies: Hedera
+does not activate a contract's key for code running by delegatecall, so a proxy account could not be the payer of
+its own HSS scheduled payments (observed on testnet: `INVALID_PAYER_SIGNATURE`).
 
 ## Secrets
 

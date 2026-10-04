@@ -6,7 +6,6 @@ import { ECDSA } from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import { ReentrancyGuard } from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-import { Initializable } from "@openzeppelin/contracts/proxy/utils/Initializable.sol";
 import { IHederaTokenService } from "./interfaces/IHederaTokenService.sol";
 import { IPriceOracle } from "./interfaces/IPriceOracle.sol";
 import { IHederaScheduleService } from "./interfaces/IHederaScheduleService.sol";
@@ -23,7 +22,7 @@ import { ISaucerSwapV2Router } from "./interfaces/ISaucerSwapV2Router.sol";
 ///         - Guardians can rotate the owner after a threshold of approvals and a timelock.
 ///         - Implements the x402 `transferExecutor` interface so a facilitator can settle signed payments.
 /// @dev The submitter (msg.sender) never gains authority. All authority comes from signatures or self-calls.
-contract ConsumerAccount is EIP712, ReentrancyGuard, ITransferExecutor, Initializable {
+contract ConsumerAccount is EIP712, ReentrancyGuard, ITransferExecutor {
     using SafeERC20 for IERC20;
 
     // ---------------------------------------------------------------- constants
@@ -232,14 +231,9 @@ contract ConsumerAccount is EIP712, ReentrancyGuard, ITransferExecutor, Initiali
 
     // ---------------------------------------------------------------- construction
 
-    /// @dev The implementation behind every account clone. It can never be initialized itself.
-    constructor() EIP712("ConsumerAccount", "1") {
-        _disableInitializers();
-    }
-
-    /// @notice Called once by the factory in the same transaction that creates the clone, so it cannot be
-    ///         front-run. EIP712 recomputes the domain separator for each clone's own address.
-    function initialize(address owner_, IPriceOracle oracle_) external initializer {
+    /// @dev Deployed as a full contract (not a proxy): on Hedera a contract's key is only active while its own code
+    ///      runs, so delegatecall proxies could not authorize e.g. HSS scheduled payments as payer.
+    constructor(address owner_, IPriceOracle oracle_) EIP712("ConsumerAccount", "1") {
         if (owner_ == address(0)) revert InvalidConfig();
         owner = owner_;
         oracle = oracle_;

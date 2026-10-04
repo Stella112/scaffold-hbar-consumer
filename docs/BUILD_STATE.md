@@ -38,7 +38,7 @@
 | TokenLaunchpad | 0.0.10848836 |
 | HCS audit topic | 0.0.10841526 |
 | Sponsor / merchant / unassociated | 0.0.10841387 / 0.0.10841388 / 0.0.10841389 |
-| App | https://hbar.38-49-209-149.sslip.io (systemd `scaffold-hbar-consumer`, Caddy) |
+| App | https://hbar.getqueryflow.xyz (systemd `scaffold-hbar-consumer`, Caddy) |
 
 ## Findings from testnet (fixed or documented; see `docs/HEDERA_GOTCHAS.md`)
 

@@ -21,5 +21,5 @@ Status: **VERIFIED** (answer in docs/SOURCES.md) · **BLOCKED** (needs a decisio
 
 ## Other open items
 
-- **Gas estimation for HTS calls via Hashio**: the relayer pads `eth_estimateGas` by 30% (min 150k). Confirmed on testnet that it underestimates HIP-904 airdrops, so airdrops get a 1.5M gas floor.
+- **Gas estimation for HTS calls via Hashio**: the relayer pads `eth_estimateGas` by 30% (min 150k). Confirmed on testnet that it underestimates HIP-904 airdrops, so airdrops get a 2.5M gas floor.
 - **Auto-association of EVM-created contracts**: ConsumerAccount always associates explicitly through `associateToken` (response code checked) rather than relying on auto-association.

@@ -11,7 +11,9 @@ export type Deployment = {
   updatedAt: string | null;
   factory?: Address;
   factoryContractId?: string;
-  /** ConsumerAccount implementation behind every EIP-1167 account clone. */
+  /** Data contracts holding ConsumerAccount's creation code (the factory reassembles it). */
+  accountCodeChunks?: Address[];
+  /** Superseded (clone factory); removed by bootstrap. */
   accountImplementation?: { address: Address; contractId?: string };
   /** keccak256 of factory + implementation creation bytecode deployed; bootstrap redeploys when it changes. */
   factoryCodeHash?: string;

@@ -62,8 +62,9 @@ const GAS_HEADROOM_NUM = 13n;
 const GAS_HEADROOM_DEN = 10n;
 const MIN_GAS = 150_000n;
 // eth_estimateGas does not model HIP-904: the HTS system call converts the airdrop fee (incl. the pending-airdrop
-// charge for unassociated receivers) into gas at execution time. Observed: 150k limit → INSUFFICIENT_GAS from 0x167.
-const AIRDROP_MIN_GAS = 1_500_000n;
+// charge for unassociated receivers) into gas at execution time. Observed: 150k and later 1.5M (through an account
+// clone) → INSUFFICIENT_GAS from 0x167; 2.5M leaves headroom.
+const AIRDROP_MIN_GAS = 2_500_000n;
 const MAX_GAS = 6_000_000n;
 
 type Prepared = {

@@ -25,7 +25,7 @@ import {
   HBAR,
   TINYBARS_PER_HBAR,
   type Deployment,
-  consumerAccountAbi,
+  accountCodeChunks,
   consumerAccountBytecode,
   consumerAccountFactoryAbi,
   consumerAccountFactoryBytecode,
@@ -186,10 +186,10 @@ async function main() {
 
     // Factory: redeploy when the contract code changed (new accounts get the new ConsumerAccount) or when its
     // default oracle differs (new accounts take the factory's default oracle).
-    // Accounts are EIP-1167 clones of one implementation; a change to either contract means a new factory.
+    // The factory deploys ConsumerAccount from stored creation code; a change to either contract means a new factory.
     const codeHash = keccak256(`${consumerAccountFactoryBytecode}${consumerAccountBytecode.slice(2)}`);
     if (deployment.factory && deployment.factoryCodeHash !== codeHash) {
-      console.log("  ConsumerAccount or factory bytecode changed; deploying a new implementation and factory");
+      console.log("  ConsumerAccount or factory bytecode changed; deploying new account code chunks and factory");
       deployment.factory = undefined;
     }
     if (deployment.factory) {
@@ -204,10 +204,23 @@ async function main() {
       }
     }
     if (!deployment.factory) {
-      const impl = await deploy("ConsumerAccount implementation", consumerAccountAbi, consumerAccountBytecode, []);
-      deployment.accountImplementation = { address: impl.address, contractId: impl.contractId };
+      // ConsumerAccount's creation code goes into small data contracts; the factory reassembles it, so accounts
+      // are full contracts (Hedera does not activate a proxy's key for scheduled or signed system calls).
+      const { chunks, codeHash: accountCodeHash } = accountCodeChunks();
+      const chunkAddresses: Address[] = [];
+      for (const [i, data] of chunks.entries()) {
+        const estimate = await pc.estimateGas({ account: wallet.account!, data });
+        const hash = await wallet.sendTransaction({ data, gas: (estimate * 12n) / 10n });
+        const rcpt = await pc.waitForTransactionReceipt({ hash });
+        if (rcpt.status !== "success" || !rcpt.contractAddress) throw new Error(`code chunk ${i} deploy failed: ${hash}`);
+        chunkAddresses.push(rcpt.contractAddress);
+        console.log(`PASS deployed account code chunk ${i + 1}/${chunks.length} (${rcpt.contractAddress})`);
+      }
+      deployment.accountCodeChunks = chunkAddresses;
+      delete deployment.accountImplementation;
       const f = await deploy("ConsumerAccountFactory", consumerAccountFactoryAbi, consumerAccountFactoryBytecode, [
-        impl.address,
+        chunkAddresses,
+        accountCodeHash,
         deployment.oracle.address,
       ]);
       deployment.factory = f.address;

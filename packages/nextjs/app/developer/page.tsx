@@ -6,12 +6,13 @@ import type { NextPage } from "next";
 
 /** Feature status as tracked in docs/BUILD_STATE.md. Update both together. */
 const FEATURES: [string, string][] = [
-  ["ConsumerAccount + factory (Sourcify exact_match)", "VERIFIED_TESTNET"],
+  ["ConsumerAccount + factory (Sourcify verified)", "VERIFIED_TESTNET"],
   ["Sponsored execution (zero-HBAR controller)", "VERIFIED_TESTNET"],
   ["Payments + signed payment requests (QR/link)", "VERIFIED_TESTNET"],
   ["HIP-904 airdrop action", "VERIFIED_TESTNET"],
   ["SaucerSwap swap-to-pay", "VERIFIED_TESTNET"],
   ["Session policy + red-team denials", "VERIFIED_TESTNET"],
+  ["Network fees counted against agent caps", "VERIFIED_TESTNET"],
   ["Supra USD oracle for session caps", "VERIFIED_TESTNET"],
   ["HCS policy audit", "VERIFIED_TESTNET"],
   ["x402 exact / transferExecutor (facilitator + client)", "VERIFIED_TESTNET"],

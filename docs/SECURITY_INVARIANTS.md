@@ -20,6 +20,8 @@
 | 21 | Recurring payments pay only the owner-configured instalment, once due | owner-only create/cancel; `executeSubscription` checks due time and remaining count | `SubscriptionsTest`; testnet flow 10 |
 | 22 | Launchpad claim fees never use other launches' HBAR | balance-delta check, revert `InsufficientFeePayment` | `test_claimRefundsUnspentFeeAndFailsWithoutFeeFunds` |
 | 23 | Oracle fails closed (stale / future / zero / unsupported / reverting) and rounds up | `SupraPriceOracle.quoteUsd6` | `SupraPriceOracleTest` incl. `testFuzz_quoteNeverUndershoots` |
+| 24 | Network fees an agent causes count against its caps | `_chargeHbarOutflow` on session actions and x402 | `AgentFeeCapsTest`; testnet flow 13 |
+| 25 | Accounts are full contracts deployed from the hash-checked stored code, owner fixed in the constructor | `ConsumerAccountFactory` + `CodeChunkStore` | `ChunkedFactoryTest` |
 | 20 | No server secret in browser bundle | env split: no secret uses `NEXT_PUBLIC_` | CI secret scan (pending) |
 
 Reviewed static-analysis exclusions are listed in `packages/foundry/foundry.toml` with reasons.

@@ -78,27 +78,11 @@ contract AgentFeeCapsTest is AccountFixture {
     }
 }
 
-/// EIP-1167 clone safety: the implementation and each clone can be initialized exactly once, by the factory.
-contract CloneFactoryTest is AccountFixture {
-    function test_implementationCannotBeInitialized() public {
-        ConsumerAccount impl = ConsumerAccount(payable(factory.accountImplementation()));
-        vm.expectRevert();
-        impl.initialize(stranger, IPriceOracle(address(0)));
-    }
-
-    function test_cloneCannotBeReinitialized() public {
-        vm.prank(stranger);
-        vm.expectRevert();
-        account.initialize(stranger, IPriceOracle(address(0)));
+/// Factory: full accounts from creation code kept in data-contract chunks.
+contract ChunkedFactoryTest is AccountFixture {
+    function test_accountsAreFullContractsNotProxies() public view {
+        assertGt(address(account).code.length, 10_000);
         assertEq(account.owner(), ownerAddr);
-    }
-
-    function test_cloneIsTinyAndDelegates() public view {
-        assertEq(address(account).code.length, 45); // EIP-1167 minimal proxy
-        assertEq(account.owner(), ownerAddr);
-        assertTrue(
-            account.domainSeparator() != ConsumerAccount(payable(factory.accountImplementation())).domainSeparator()
-        );
     }
 
     function test_predictionMatchesAndCreationIsIdempotent() public {
@@ -109,8 +93,25 @@ contract CloneFactoryTest is AccountFixture {
         assertEq(a.owner(), stranger);
     }
 
-    function test_factoryRejectsMissingImplementation() public {
-        vm.expectRevert(ConsumerAccountFactory.InvalidImplementation.selector);
-        new ConsumerAccountFactory(address(0xdead), IPriceOracle(address(0)));
+    function test_ownerIsBoundToTheAddress() public view {
+        assertTrue(factory.getAddress(stranger, bytes32(0)) != factory.getAddress(ownerAddr, bytes32(0)));
+    }
+
+    function test_factoryIsSmall() public view {
+        assertLt(address(factory).code.length, 4_000);
+    }
+
+    function test_factoryRejectsWrongCode() public {
+        address[] memory chunks = new address[](1);
+        chunks[0] = factory.codeChunks(0); // only part of the code
+        bytes32 fullHash = factory.accountCodeHash();
+        vm.expectRevert(ConsumerAccountFactory.InvalidCode.selector);
+        new ConsumerAccountFactory(chunks, fullHash, IPriceOracle(address(0)));
+    }
+
+    function test_chunksAreInertWhenCalled() public {
+        (bool ok, bytes memory ret) = factory.codeChunks(0).call("");
+        assertTrue(ok);
+        assertEq(ret.length, 0);
     }
 }

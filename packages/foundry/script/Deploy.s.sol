@@ -2,7 +2,7 @@
 pragma solidity ^0.8.24;
 
 import { ScaffoldETHDeploy } from "./DeployHelpers.s.sol";
-import { ConsumerAccount } from "../contracts/ConsumerAccount.sol";
+import { AccountFactoryDeployer } from "../contracts/AccountFactoryDeployer.sol";
 import { ConsumerAccountFactory } from "../contracts/ConsumerAccountFactory.sol";
 import { IPriceOracle } from "../contracts/interfaces/IPriceOracle.sol";
 
@@ -16,8 +16,7 @@ import { IPriceOracle } from "../contracts/interfaces/IPriceOracle.sol";
 contract DeployScript is ScaffoldETHDeploy {
     function run() external ScaffoldEthDeployerRunner {
         address oracle = vm.envOr("PRICE_ORACLE", address(0));
-        ConsumerAccountFactory factory =
-            new ConsumerAccountFactory(address(new ConsumerAccount()), IPriceOracle(oracle));
+        ConsumerAccountFactory factory = AccountFactoryDeployer.deploy(IPriceOracle(oracle));
         deployments.push(Deployment({ name: "ConsumerAccountFactory", addr: address(factory) }));
     }
 }

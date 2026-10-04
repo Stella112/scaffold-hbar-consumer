@@ -4,6 +4,7 @@ pragma solidity ^0.8.24;
 import { Test } from "forge-std/Test.sol";
 import { ConsumerAccount } from "../contracts/ConsumerAccount.sol";
 import { ConsumerAccountFactory } from "../contracts/ConsumerAccountFactory.sol";
+import { AccountFactoryDeployer } from "../contracts/AccountFactoryDeployer.sol";
 import { Actions } from "../contracts/Actions.sol";
 import { IPriceOracle } from "../contracts/interfaces/IPriceOracle.sol";
 import { MockERC20, MockOracle, MockHederaTokenService, CallTarget } from "./mocks/Mocks.sol";
@@ -44,7 +45,7 @@ abstract contract AccountFixture is Test {
         vm.store(address(0x167), bytes32(0), bytes32(uint256(22))); // responseCode slot
 
         target = new CallTarget();
-        factory = new ConsumerAccountFactory(address(new ConsumerAccount()), IPriceOracle(address(oracle)));
+        factory = AccountFactoryDeployer.deploy(IPriceOracle(address(oracle)));
         account = factory.createAccount(ownerAddr, bytes32(0));
 
         usdc.mint(address(account), 1_000e6);

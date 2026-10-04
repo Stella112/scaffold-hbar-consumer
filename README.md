@@ -6,7 +6,7 @@
 npx create-scaffold-hbar@latest --template Stella112/scaffold-hbar-consumer
 ```
 
-**Live demo (Hedera testnet):** https://hbar.38-49-209-149.sslip.io
+**Live demo (Hedera testnet):** https://hbar.getqueryflow.xyz
 
 > Testnet software. Unaudited. Do not use with mainnet funds.
 
@@ -30,10 +30,11 @@ npx create-scaffold-hbar@latest --template Stella112/scaffold-hbar-consumer
 | 10 | **Recurring payment** created once by the owner and executed twice by the **Hedera Schedule Service** with no further transactions |
 | 11 | **Savings vault**: an agent deposits within its caps; paying the vault shares away or withdrawing is denied; the owner redeems |
 | 12 | **Token launchpad**: an immutable fixed-supply HTS token is launched, bought to target, graduates exactly once (second call `AlreadyGraduated`), and claims arrive by HIP-904 airdrop |
+| 13 | **Agent fee caps**: a HIP-904 airdrop's HBAR fee is charged to the agent's USD caps (`SessionFeeCharged`); an airdrop whose fee alone exceeds the cap is denied `PER_CALL_CAP_EXCEEDED` |
 
 Results are in the committed [`TESTNET_VERIFICATION.md`](TESTNET_VERIFICATION.md). Nothing in it is hand-written.
 
-Reference testnet deployment (all source-verified on Sourcify, `exact_match`): ConsumerAccountFactory [0.0.10848625](https://hashscan.io/testnet/contract/0.0.10848625), SupraPriceOracle [0.0.10844780](https://hashscan.io/testnet/contract/0.0.10844780), SavingsVault [0.0.10848627](https://hashscan.io/testnet/contract/0.0.10848627), TokenLaunchpad [0.0.10848836](https://hashscan.io/testnet/contract/0.0.10848836), HCS audit topic [0.0.10841526](https://hashscan.io/testnet/topic/0.0.10841526), sponsor [0.0.10841387](https://hashscan.io/testnet/account/0.0.10841387).
+Reference testnet deployment (source-verified on Sourcify): ConsumerAccountFactory FACTORY_PLACEHOLDER, SupraPriceOracle [0.0.10844780](https://hashscan.io/testnet/contract/0.0.10844780), SavingsVault [0.0.10848627](https://hashscan.io/testnet/contract/0.0.10848627), TokenLaunchpad [0.0.10848836](https://hashscan.io/testnet/contract/0.0.10848836), HCS audit topic [0.0.10841526](https://hashscan.io/testnet/topic/0.0.10841526), sponsor [0.0.10841387](https://hashscan.io/testnet/account/0.0.10841387).
 
 ## Quickstart
 
@@ -61,7 +62,7 @@ agent session key  ──signs typed action─┘     │  validate · dedupe ·
 
 | Package | Role |
 | --- | --- |
-| `packages/foundry` | `ConsumerAccount` (+ HSS subscriptions, vault deposits), `ConsumerAccountFactory`, `SupraPriceOracle`, `SavingsVault`, `TokenLaunchpad`, typed `Actions`, 112 Foundry tests |
+| `packages/foundry` | `ConsumerAccount` (+ HSS subscriptions, vault deposits, session fee caps), `ConsumerAccountFactory` (account code in SSTORE2 chunks), `SupraPriceOracle`, `SavingsVault`, `TokenLaunchpad`, typed `Actions`, 124 Foundry tests |
 | `packages/sdk` | Framework-independent TypeScript: EIP-712 intents, typed action codecs, payment requests, reason codes, Mirror client, receipts, generated ABIs |
 | `packages/relayer` | Sponsor pipeline (`Sponsor`), x402 `TransferExecutorFacilitator`, standalone HTTP server, HCS auditor |
 | `packages/mcp` | MCP server for AI agents: `get_allowance`, `pay`, `fetch_paid_resource` (x402), `get_audit_log` |
@@ -190,8 +191,6 @@ Add a typed action by giving it a stable ID in `Actions.sol` and `sdk/src/action
 - Supra testnet feeds update hourly (or on a 5% move); if a feed goes stale for over 2 hours, agent spending is denied until it updates.
 - x402 here settles through ConsumerAccounts (`transferExecutor`); `cryptoTransfer` payers use `@x402/hedera` directly.
 - Recurring payments are HBAR-only in the UI (the contract also supports HTS tokens).
-- A session's `airdrop` action makes the account pay HIP-904 fees (~1 HBAR per pending airdrop) outside its USD caps; the app never grants it to agents ([`SECURITY.md`](SECURITY.md)).
-- The factory is 341 bytes under the 24 KB contract-size limit because it embeds the account's creation code; new account features would first need a clone-based factory ([`docs/DECISIONS.md`](docs/DECISIONS.md)).
 - The savings vault has no yield strategy; the launchpad sells at a fixed price (no bonding curve or DEX listing).
 - The browser controller key is a testnet convenience stored in localStorage, not production custody.
 

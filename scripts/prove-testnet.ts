@@ -322,7 +322,7 @@ await flow(6, "x402 exact / transferExecutor payment by an agent session", async
   } as const;
   const paymentRequired = {
     x402Version: X402_VERSION,
-    resource: { url: "https://hbar.38-49-209-149.sslip.io/api/x402/premium", description: "premium data", mimeType: "application/json" },
+    resource: { url: "https://hbar.getqueryflow.xyz/api/x402/premium", description: "premium data", mimeType: "application/json" },
     accepts: [requirements],
   };
   const client = new x402Client()
@@ -706,12 +706,15 @@ await flow(12, "Token launchpad: HTS token launch, purchase, one-time graduation
   const cost = await pc.readContract({ address: pad.address, abi: padAbi, functionName: "quote", args: [id, 100_00n] });
   const buyHash = await operatorWallet.writeContract({ address: pad.address, abi: padAbi, functionName: "buy", args: [id, 100_00n], value: tinybarsToWeibars(cost), chain: operatorWallet.chain, account: operatorWallet.account! });
   const buyRcpt = await pc.waitForTransactionReceipt({ hash: buyHash });
+  // The relay estimates and simulates against Mirror Node state, which lags consensus: wait until the buy is indexed.
+  await M.waitForContractResult(buyHash).catch(() => null);
   const b: Evidence = { ...l, step: "Operator buys 100 SDEMO for 1 HBAR", actor: `${op.HEDERA_OPERATOR_ID} (EOA buyer)`, input: `buy(${id}, 10000 units) value ${cost} tinybars`, expected: "success; raise reaches the 1 HBAR target", transactionHash: buyHash, transactionId: null, mirrorQuery: resultQuery(buyHash), mirrorResult: null, hcs: null, actual: `status=${buyRcpt.status}`, status: buyRcpt.status === "success" && cost === 100_000_000n ? "PASS" : "FAIL", timestamp: now() };
   out.push(b);
 
   const creatorBefore = (await M.getHbarBalance(account)).tinybars;
   const gradHash = await operatorWallet.writeContract({ address: pad.address, abi: padAbi, functionName: "graduate", args: [id], chain: operatorWallet.chain, account: operatorWallet.account! });
   const gradRcpt = await pc.waitForTransactionReceipt({ hash: gradHash });
+  await M.waitForContractResult(gradHash).catch(() => null);
   await new Promise(r => setTimeout(r, 6000));
   const creatorGain = (await M.getHbarBalance(account)).tinybars - creatorBefore;
   // The relay drops revert data, so ask Mirror Node's simulator and decode the error name.
