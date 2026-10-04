@@ -51,3 +51,27 @@ export function useController() {
 
   return { controller: account, ready, create, forget };
 }
+
+/**
+ * After guardian recovery, the new key controls an account at a different address than the one it would create
+ * itself. Linking stores that address so the app uses it (only honoured while this key is the account's owner).
+ */
+const LINK_KEY = "scaffold-hbar-consumer.linked-account.testnet";
+
+export function readLinkedAccount(): `0x${string}` | null {
+  try {
+    const v = localStorage.getItem(LINK_KEY);
+    return v && /^0x[0-9a-fA-F]{40}$/.test(v) ? (v as `0x${string}`) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function writeLinkedAccount(address: string | null) {
+  try {
+    if (address) localStorage.setItem(LINK_KEY, address);
+    else localStorage.removeItem(LINK_KEY);
+  } catch {
+    // ignore
+  }
+}

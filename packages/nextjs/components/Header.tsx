@@ -21,6 +21,8 @@ export const menuLinks: HeaderMenuLink[] = [
   { label: "Recurring", href: "/recurring" },
   { label: "Save", href: "/save" },
   { label: "Launch", href: "/launch" },
+  { label: "Claim", href: "/claim" },
+  { label: "Recovery", href: "/recovery" },
   { label: "Activity", href: "/activity" },
   { label: "Agent", href: "/agent" },
   { label: "Sponsor", href: "/sponsor" },
