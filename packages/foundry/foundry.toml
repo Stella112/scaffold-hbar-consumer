@@ -46,3 +46,9 @@ bracket_spacing = true
 int_types = "long"
 
 # See more config options https://book.getfoundry.sh/reference/config/overview
+
+[invariant]
+# 64 random sequences x 200 calls keeps CI under a few minutes with via-IR.
+runs = 64
+depth = 200
+fail_on_revert = false
