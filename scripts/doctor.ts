@@ -135,7 +135,7 @@ await safe("price oracle", async () => {
     ok ? `1 HBAR = ${(Number(usd6) / 1e6).toFixed(4)} USD (${o.kind})` : `${o.kind} returned ok=false (stale or unavailable): agent spend is denied`,
   );
 });
-report("WARN", "x402 transferExecutor", "@x402/hedera@2.28.0 does not implement transferExecutor (docs/OPEN_QUESTIONS.md U9/U10)");
+report("PASS", "x402 transferExecutor", "implemented in this template (TransferExecutorFacilitator + TransferExecutorClient); @x402/hedera@2.28.0 lacks it");
 
 const fails = results.filter(r => r.level === "FAIL").length;
 console.log(`\n${fails ? `${fails} FAIL` : "no FAIL"}, ${results.filter(r => r.level === "WARN").length} WARN`);
