@@ -34,6 +34,8 @@ import {
   savingsVaultBytecode,
   supraPriceOracleAbi,
   supraPriceOracleBytecode,
+  launchpadBuyActionAbi,
+  launchpadBuyActionBytecode,
   tokenLaunchpadAbi,
   tokenLaunchpadBytecode,
 } from "@sh/sdk";
@@ -238,6 +240,18 @@ async function main() {
     if (!deployment.launchpad || deployment.launchpad.codeHash !== launchpadHash) {
       const l = await deploy("TokenLaunchpad", tokenLaunchpadAbi, tokenLaunchpadBytecode, []);
       deployment.launchpad = { address: l.address, contractId: l.contractId, codeHash: launchpadHash };
+    }
+
+    // Action modules (custom typed actions installed per account by its owner).
+    if (deployment.launchpad) {
+      const moduleHash = keccak256(`${launchpadBuyActionBytecode}${deployment.launchpad.address.slice(2)}`);
+      if (deployment.actionModules?.launchpadBuy?.codeHash !== moduleHash) {
+        const m = await deploy("LaunchpadBuyAction", launchpadBuyActionAbi, launchpadBuyActionBytecode, [deployment.launchpad.address]);
+        deployment.actionModules = {
+          ...deployment.actionModules,
+          launchpadBuy: { address: m.address, contractId: m.contractId, codeHash: moduleHash },
+        };
+      }
     }
 
     // HCS audit topic: only the sponsor key can submit.

@@ -14,6 +14,7 @@ import {
   RESERVED_ACTION_IDS,
   type Receipt,
   ConsumerAccountReader,
+  consumerAccountAbi,
   encodeVaultDeposit,
   longZeroToEntityId,
   tokenLaunchpadAbi,
@@ -45,7 +46,8 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { x402Client } from "@x402/core/client";
 import { x402Facilitator } from "@x402/core/facilitator";
 import { decodePaymentSignatureHeader, encodePaymentSignatureHeader } from "@x402/core/http";
-import { mirror, publicClient, walletFor } from "./lib/clients";
+import { AccountCreateTransaction, Hbar, PrivateKey } from "@hiero-ledger/sdk";
+import { hederaClient, mirror, publicClient, walletFor } from "./lib/clients";
 import { hex0x, operatorEnv, parseEnv, roleEnv } from "./lib/env";
 import { type Evidence, writeVerification } from "./lib/evidence";
 
@@ -820,6 +822,168 @@ await flow(13, "Agent airdrop fees count against its USD caps", async () => {
   });
   b.status = denied.status === "denied" && denied.reasonCode === "PER_CALL_CAP_EXCEEDED" ? "PASS" : "FAIL";
   out.push(b);
+  return out;
+});
+
+await flow(14, "HIP-904 pending airdrop claimed by the recipient", async () => {
+  // A fresh ordinary Hedera account with no auto-association slots, so the airdrop must wait for its claim.
+  const recipientKey = generatePrivateKey();
+  const hClient = hederaClient(op.HEDERA_OPERATOR_ID, op.HEDERA_OPERATOR_KEY);
+  let recipientId: string;
+  try {
+    const created = await new AccountCreateTransaction()
+      .setECDSAKeyWithAlias(PrivateKey.fromStringECDSA(recipientKey.slice(2)).publicKey)
+      .setInitialBalance(new Hbar(3))
+      .setMaxAutomaticTokenAssociations(0)
+      .execute(hClient);
+    recipientId = (await created.getReceipt(hClient)).accountId!.toString();
+  } finally {
+    hClient.close();
+  }
+  const recipient = privateKeyToAccount(recipientKey);
+  await M.waitForAccount(recipientId);
+
+  const amount = 2_000_000n; // 0.02 WHBAR
+  const sent = await actionSend(controller, ACTION_IDS.airdrop, encodePayment({ asset: WHBAR, to: recipient.address, amount }));
+  await new Promise(r => setTimeout(r, 6000));
+  const pendingBefore = (await M.getPendingAirdrops(recipientId)).filter(a => a.token_id === tokens.WHBAR!.tokenId);
+  const out: Evidence[] = [];
+  const s = fromReceipt(14, "Account airdrops WHBAR to an unassociated recipient", sent, {
+    asset: `WHBAR ${tokens.WHBAR!.tokenId}`,
+    input: `typed airdrop 0.02 WHBAR to fresh account ${recipientId} (max auto-associations 0)`,
+    expected: "success; pending airdrop recorded for the recipient",
+  });
+  s.mirrorQuery = `${HEDERA_TESTNET.mirrorUrl}/accounts/${recipientId}/airdrops/pending`;
+  s.mirrorResult = `pending: ${pendingBefore.map(p => `${p.amount} from ${p.sender_id}`).join(", ") || "none"}`;
+  if (sent.status === "success" && !pendingBefore.some(p => BigInt(p.amount) === amount)) s.status = "FAIL";
+  out.push(s);
+  if (sent.status !== "success") return out;
+
+  // The recipient claims with its own key through the HTS system contract, exactly as the app's Claim page does.
+  const claimAbi = parseAbi([
+    "struct PendingAirdrop { address sender; address receiver; address token; int64 serial; }",
+    "function claimAirdrops(PendingAirdrop[] pendingAirdrops) returns (int64 responseCode)",
+  ]);
+  const recipientWallet = walletFor(recipientKey);
+  const claimHash = await recipientWallet.writeContract({
+    address: "0x0000000000000000000000000000000000000167",
+    abi: claimAbi,
+    functionName: "claimAirdrops",
+    args: [[{ sender: account, receiver: recipient.address, token: WHBAR, serial: 0n }]],
+    gas: 1_500_000n,
+    chain: recipientWallet.chain,
+    account: recipientWallet.account!,
+  });
+  const claimRcpt = await pc.waitForTransactionReceipt({ hash: claimHash });
+  await M.waitForContractResult(claimHash).catch(() => null);
+  await new Promise(r => setTimeout(r, 6000));
+  const pendingAfter = (await M.getPendingAirdrops(recipientId)).filter(a => a.token_id === tokens.WHBAR!.tokenId);
+  const balance = await M.getTokenBalance(recipientId, tokens.WHBAR!.tokenId);
+  out.push({
+    ...s,
+    step: "Recipient claims the pending airdrop (HTS claimAirdrops from its own key)",
+    actor: `${recipientId} (${recipient.address}, the recipient)`,
+    input: `EVM tx from the recipient to 0x167 claimAirdrops([{sender: account, receiver: recipient, token: WHBAR}])`,
+    expected: "pending airdrop gone; recipient WHBAR balance = 2000000",
+    actual: `tx status=${claimRcpt.status}; pending after=${pendingAfter.length}; recipient WHBAR=${balance ?? 0}`,
+    transactionHash: claimHash,
+    transactionId: null,
+    mirrorQuery: resultQuery(claimHash),
+    mirrorResult: null,
+    hcs: null,
+    status: claimRcpt.status === "success" && pendingAfter.length === 0 && balance === amount ? "PASS" : "FAIL",
+    timestamp: now(),
+  });
+  return out;
+});
+
+await flow(15, "Guardian recovery: two guardians, timelock, new owner takes over", async () => {
+  // Guardians are other ConsumerAccounts: they act through sponsored owner intents and need no HBAR.
+  const makeGuardian = async () => {
+    const key = privateKeyToAccount(generatePrivateKey());
+    const r = (await sponsor.handle(toSponsorRequest.createAccount(chainId, key.address, zeroHash))).receipt;
+    if (r.status !== "success") throw new Error(`guardian account creation denied: ${r.reasonCode}`);
+    return { key, account: r.account as Address };
+  };
+  const guardianCall = async (g: { key: ReturnType<typeof privateKeyToAccount>; account: Address }, data: Hex) => {
+    const intent = buildOwnerIntent([{ target: account, value: 0n, data }]);
+    const sig = await signOwnerIntent(g.key, chainId, g.account, intent);
+    return (await sponsor.handle(toSponsorRequest.ownerIntent(chainId, g.account, intent, sig))).receipt;
+  };
+  const [g1, g2] = [await makeGuardian(), await makeGuardian()];
+  const delay = 300n; // MIN_RECOVERY_DELAY
+  const setup = await ownerSend([selfCall.setGuardians(account, [g1.account, g2.account], 2, delay)]);
+  const out: Evidence[] = [
+    fromReceipt(15, "Owner sets two guardians, threshold 2, 5-minute timelock", setup, {
+      input: `setGuardians([${g1.account}, ${g2.account}], 2, 300s)`,
+      expected: "GuardiansUpdated",
+    }),
+  ];
+  if (setup.status !== "success") return out;
+
+  const newOwner = privateKeyToAccount(generatePrivateKey());
+  const propose = await guardianCall(g1, encodeFunctionData({ abi: consumerAccountAbi, functionName: "proposeRecovery", args: [newOwner.address] }));
+  out.push(
+    fromReceipt(15, "Guardian 1 proposes the new owner key", propose, {
+      actor: `${g1.account} (guardian ConsumerAccount, 0 HBAR owner)`,
+      input: `guardian owner intent → account.proposeRecovery(${newOwner.address})`,
+      expected: "RecoveryProposed (1 of 2 approvals)",
+    }),
+  );
+  const approve = await guardianCall(g2, encodeFunctionData({ abi: consumerAccountAbi, functionName: "approveRecovery", args: [] }));
+  out.push(
+    fromReceipt(15, "Guardian 2 approves: threshold reached, timelock starts", approve, {
+      actor: `${g2.account} (guardian ConsumerAccount)`,
+      input: "guardian owner intent → account.approveRecovery()",
+      expected: "RecoveryReady",
+    }),
+  );
+  if (propose.status !== "success" || approve.status !== "success") return out;
+
+  // Too early: executeRecovery must revert before the timelock ends.
+  const execData = encodeFunctionData({ abi: consumerAccountAbi, functionName: "executeRecovery", args: [] });
+  const early = await fetch(`${HEDERA_TESTNET.mirrorUrl}/contracts/call`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ from: operatorWallet.account!.address, to: account, data: execData, estimate: false }),
+  }).then(r => r.json() as Promise<{ _status?: { messages?: { data?: Hex }[] } }>);
+  const earlyData = early._status?.messages?.[0]?.data;
+  const earlyReason = earlyData && earlyData !== "0x" ? decodeRevertData(earlyData).errorName : "no revert";
+
+  await new Promise(r => setTimeout(r, Number(delay + 20n) * 1000));
+  const execHash = await operatorWallet.sendTransaction({ to: account, data: execData, gas: 300_000n, chain: operatorWallet.chain, account: operatorWallet.account! });
+  const execRcpt = await pc.waitForTransactionReceipt({ hash: execHash });
+  await M.waitForContractResult(execHash).catch(() => null);
+  const ownerNow = await pc.readContract({ address: account, abi: consumerAccountAbi, functionName: "owner" });
+
+  // The old controller is locked out; the recovered key can pay (sponsored).
+  const oldTry = await ownerSend([{ target: merchantEvm, value: 1_000_000n, data: "0x" }]);
+  const intent = buildOwnerIntent([{ target: merchantEvm, value: 1_000_000n, data: "0x" }]);
+  const newTry = (await sponsor.handle(
+    toSponsorRequest.ownerIntent(chainId, account, intent, await signOwnerIntent(newOwner, chainId, account, intent)),
+  )).receipt;
+  out.push({
+    ...out[0]!,
+    step: "Timelock, execution, and the keys afterwards",
+    actor: "anyone (executeRecovery is permissionless once ready)",
+    input: `executeRecovery() early (simulated) and after ${delay}s; then old key and new key each try to pay 0.01 HBAR`,
+    expected: "early: RecoveryNotReady; then owner = new key; old key SIGNATURE_INVALID; new key pays",
+    actual: `early: ${earlyReason}; execute status=${execRcpt.status}; owner=${ownerNow}; old key → ${oldTry.status} ${oldTry.status === "denied" ? oldTry.reasonCode : ""}; new key → ${newTry.status}`,
+    transactionHash: execHash,
+    transactionId: null,
+    mirrorQuery: resultQuery(execHash),
+    mirrorResult: null,
+    hcs: null,
+    status:
+      earlyReason === "RecoveryNotReady" &&
+      execRcpt.status === "success" &&
+      ownerNow.toLowerCase() === newOwner.address.toLowerCase() &&
+      oldTry.status === "denied" &&
+      newTry.status === "success"
+        ? "PASS"
+        : "FAIL",
+    timestamp: now(),
+  });
   return out;
 });
 

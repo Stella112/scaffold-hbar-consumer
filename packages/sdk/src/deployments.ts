@@ -24,6 +24,8 @@ export type Deployment = {
   /** ERC-4626 savings vaults by asset symbol. */
   vaults?: Record<string, { address: Address; contractId?: string; asset: Address }>;
   launchpad?: { address: Address; contractId?: string; codeHash?: string };
+  /** Deployed planner modules for custom typed actions (owners install them per account). */
+  actionModules?: Record<string, { address: Address; contractId?: string; codeHash?: string }>;
 };
 
 export const testnetDeployment = testnet as Deployment;
