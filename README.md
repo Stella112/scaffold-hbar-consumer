@@ -36,6 +36,10 @@ Results are in the committed [`TESTNET_VERIFICATION.md`](TESTNET_VERIFICATION.md
 
 Reference testnet deployment (source-verified on Sourcify): ConsumerAccountFactory [0.0.10853888](https://hashscan.io/testnet/contract/0.0.10853888), SupraPriceOracle [0.0.10844780](https://hashscan.io/testnet/contract/0.0.10844780), SavingsVault [0.0.10848627](https://hashscan.io/testnet/contract/0.0.10848627), TokenLaunchpad [0.0.10848836](https://hashscan.io/testnet/contract/0.0.10848836), HCS audit topic [0.0.10841526](https://hashscan.io/testnet/topic/0.0.10841526), sponsor [0.0.10841387](https://hashscan.io/testnet/account/0.0.10841387).
 
+## Documentation
+
+Topic guides live in [`docs/guides`](docs/guides/README.md): architecture, account model, sponsorship, policy and agents, payments, x402, MCP, recovery, scheduling, vault, launchpad, custom actions and testnet proof.
+
 ## Quickstart
 
 Requirements: Node ≥ 20.18.3, Yarn (Corepack or `npm i -g yarn`), Git, [Foundry](https://getfoundry.sh).
