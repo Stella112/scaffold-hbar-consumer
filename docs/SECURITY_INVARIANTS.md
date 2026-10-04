@@ -22,6 +22,9 @@
 | 23 | Oracle fails closed (stale / future / zero / unsupported / reverting) and rounds up | `SupraPriceOracle.quoteUsd6` | `SupraPriceOracleTest` incl. `testFuzz_quoteNeverUndershoots` |
 | 24 | Network fees an agent causes count against its caps | `_chargeHbarOutflow` on session actions and x402 | `AgentFeeCapsTest`; testnet flow 13 |
 | 25 | Accounts are full contracts deployed from the hash-checked stored code, owner fixed in the constructor | `ConsumerAccountFactory` + `CodeChunkStore` | `ChunkedFactoryTest` |
-| 20 | No server secret in browser bundle | env split: no secret uses `NEXT_PUBLIC_` | CI secret scan (pending) |
+| 26 | Action modules cannot exceed their declared spend, call the account or HTS, or override built-in / reserved IDs | `_runModule`, `setActionModule` | `ActionModulesTest` |
+| 27 | Launchpad graduation runs once; LP stays locked; creator fee capped at 10% | `TokenLaunchpad.graduate` | `TokenLaunchpadTest` (incl. reentrancy, front-run pool, fuzzed curve maths); testnet flow 12 |
+| 28 | Agent session invariants hold under random action sequences | handler-driven Foundry invariants | `test/invariant/SessionInvariants.t.sol` |
+| 20 | No server secret in browser bundle | env split: no secret uses `NEXT_PUBLIC_` | gitleaks in CI (`.github/workflows/ci.yaml`) |
 
 Reviewed static-analysis exclusions are listed in `packages/foundry/foundry.toml` with reasons.

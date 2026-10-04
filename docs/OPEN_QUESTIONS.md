@@ -23,3 +23,16 @@ Status: **VERIFIED** (answer in docs/SOURCES.md) · **BLOCKED** (needs a decisio
 
 - **Gas estimation for HTS calls via Hashio**: the relayer pads `eth_estimateGas` by 30% (min 150k). Confirmed on testnet that it underestimates HIP-904 airdrops, so airdrops get a 2.5M gas floor.
 - **Auto-association of EVM-created contracts**: ConsumerAccount always associates explicitly through `associateToken` (response code checked) rather than relying on auto-association.
+
+## Vault yield source (U15) — BLOCKED_EXTERNAL
+
+Checked live on 2026-10-04 for a real-yield vault strategy:
+
+- **Bonzo Lend testnet** (LendingPool 0.0.4999355): WHBAR/USDC reserves listed but empty (aToken supply 0, never
+  updated); a real deposit of 0.5 WHBAR from the operator reverted `CALLER_NOT_AUTHORIZED` inside Bonzo
+  (tx 0x431a6dad4692eff71e776b4254b7e953d2f9638085b6da576bd9939d8d0c7549).
+- **SaucerSwap V1 WHBAR/USDC pool** (0x8766…7667): liquidity present, last trade Dec 2024, so no fees accrue.
+- **HBARX (Stader)**: no documented testnet staking contract.
+
+The vault therefore ships without a strategy rather than with a fabricated or zero yield. The action-module system
+lets a `vault-management` action be added once a live source exists.

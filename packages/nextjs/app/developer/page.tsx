@@ -19,8 +19,11 @@ const FEATURES: [string, string][] = [
   ["MCP server for AI agents", "VERIFIED_TESTNET"],
   ["HSS recurring payments (HIP-1215)", "VERIFIED_TESTNET"],
   ["Savings vault (agents deposit, never withdraw)", "VERIFIED_TESTNET"],
-  ["Token launchpad (one-time graduation)", "VERIFIED_TESTNET"],
-  ["Guardian recovery", "VERIFIED_LOCAL"],
+  ["Token launchpad: bonding curve, graduation into SaucerSwap", "VERIFIED_TESTNET"],
+  ["HIP-904 claim by the recipient (Claim page)", "VERIFIED_TESTNET"],
+  ["Guardian recovery (Recovery page)", "VERIFIED_TESTNET"],
+  ["Custom action modules + yarn new:action (launchpad-buy)", "VERIFIED_LOCAL"],
+  ["Vault yield strategy", "BLOCKED_EXTERNAL"],
 ];
 
 const badge = (s: string) =>

@@ -34,3 +34,8 @@ Values marked **live** were observed against Hedera testnet; values marked **sou
 | SaucerSwap `exactOutput` semantics | `ExactOutputParams{bytes path,address recipient,uint256 deadline,uint256 amountOut,uint256 amountInMaximum}`; path reversed (output first); 3-byte fee; recipient must be associated with output token; approve router for non-HBAR input | docs.saucerswap.finance/developers/v2/swap/swap-tokens-for-tokens | 2026-10-03 | docs + bytecode selector |
 
 Liquidity and quotes change over time; `yarn doctor` re-queries them before demos.
+| SaucerSwap V1 (testnet) | Factory 0.0.9959, RouterV3 0.0.19264 (`whbar()` 0x3ad2, `factory()` 0x26e7); `pairCreateFee()` 2e10 tinycents ($2 ≈ 19.5 HBAR) | docs.saucerswap.finance contract deployments + live reads | 2026-10-04 | live |
+| Exchange-rate precompile | `tinycentsToTinybars` at 0x168 (HIP-475), used by SaucerSwap's router and the launchpad | HIP-475 + live trace | 2026-10-04 | live |
+| Bonzo Lend testnet | LendingPool 0.0.4999355; deposits revert `CALLER_NOT_AUTHORIZED` | docs.bonzo.finance + live tx | 2026-10-04 | live |
+| MCP SDK | `@modelcontextprotocol/sdk` 1.32.0 | npm registry | 2026-10-03 | registry |
+| jsQR | `jsqr` 1.4.0 (Apache-2.0) | npm registry | 2026-10-04 | registry |

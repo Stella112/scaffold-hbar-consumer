@@ -29,7 +29,9 @@ npx create-scaffold-hbar@latest --template Stella112/scaffold-hbar-consumer
 | 9 | Raw-call bypass: denied by the relayer *and* reverted on-chain when submitted directly, with a correlated HCS denial |
 | 10 | **Recurring payment** created once by the owner and executed twice by the **Hedera Schedule Service** with no further transactions |
 | 11 | **Savings vault**: an agent deposits within its caps; paying the vault shares away or withdrawing is denied; the owner redeems |
-| 12 | **Token launchpad**: an immutable fixed-supply HTS token is launched, bought to target, graduates exactly once (second call `AlreadyGraduated`), and claims arrive by HIP-904 airdrop |
+| 12 | **Token launchpad**: an immutable fixed-supply HTS token on a bonding curve, bought to target, graduates exactly once into a **SaucerSwap V1 pool** (second call `AlreadyGraduated`), claims arrive by HIP-904 airdrop |
+| 14 | **HIP-904 claim**: a fresh account with no association slots receives a pending airdrop and claims it itself through HTS `claimAirdrops` (the Claim page's path) |
+| 15 | **Guardian recovery**: two guardian accounts (no HBAR, sponsored), threshold 2, 5-minute timelock; early execution reverts `RecoveryNotReady`; afterwards the old key is rejected and the new key pays |
 | 13 | **Agent fee caps**: a HIP-904 airdrop's HBAR fee is charged to the agent's USD caps (`SessionFeeCharged`); an airdrop whose fee alone exceeds the cap is denied `PER_CALL_CAP_EXCEEDED` |
 
 Results are in the committed [`TESTNET_VERIFICATION.md`](TESTNET_VERIFICATION.md). Nothing in it is hand-written.
@@ -70,8 +72,8 @@ agent session key  ──signs typed action─┘     │  validate · dedupe ·
 | `packages/sdk` | Framework-independent TypeScript: EIP-712 intents, typed action codecs, payment requests, reason codes, Mirror client, receipts, generated ABIs |
 | `packages/relayer` | Sponsor pipeline (`Sponsor`), x402 `TransferExecutorFacilitator`, standalone HTTP server, HCS auditor |
 | `packages/mcp` | MCP server for AI agents: 10 tools (balance, policy, sponsor, payment, payment request, swap-and-pay, x402, vault deposit, receipt, audit log) |
-| `packages/nextjs` | Consumer app: Home, Pay, Request, Recurring, Save, Launch, Activity, Agent, Sponsor, Developer; sponsor + x402 API routes reuse `@sh/relayer` |
-| `scripts` | `doctor`, `bootstrap`, `prove:testnet`, `sponsor:fund`, `check:scaffold` |
+| `packages/nextjs` | Consumer app: Home, Pay (paste or scan QR), Request, Recurring, Save, Launch, Claim, Recovery, Activity, Agent, Sponsor, Developer; sponsor, x402 and faucet API routes |
+| `scripts` | `doctor`, `bootstrap`, `prove:testnet`, `sponsor:fund`, `new:action`, `check:scaffold` |
 
 Two layers of enforcement: the **relayer** protects the sponsor's HBAR (budgets, rate limits, simulation); the **account contract** protects user assets (signatures, nonces, expiry, session policy). A compromised relayer cannot authorize anything; a compromised session cannot widen its own authority.
 
@@ -127,6 +129,10 @@ Tools: `get_balance`, `get_policy` (caps, spent today, expiry, live HBAR/USD), `
 
 `/api/x402/premium` is a paid resource (0.05 HBAR, live HBAR/USD data). Without `PAYMENT-SIGNATURE` it answers **402** with `PAYMENT-REQUIRED`; with a valid payment it settles and returns the data plus `PAYMENT-RESPONSE`. The app is also a facilitator for `exact` / `transferExecutor` on `hedera:testnet` (`/api/x402/facilitator/{supported,verify,settle}`), implementing `scheme_exact_hedera.md`: executor admission (factory-deployed ConsumerAccounts), calldata built only from the requirements, capped-gas simulation, `ContractExecuteTransaction` settlement and parent + child record conformance. Clients use `TransferExecutorClient` with `@x402/core`'s `x402Client`.
 
+## Custom actions
+
+`yarn new:action <name>` scaffolds a new typed action as an owner-installed **action module**: a read-only planner the account calls, after which the account itself charges the declared spend against the session's caps and recipients, executes the calls (never to itself or HTS) and verifies the outflow. The generator writes the module, Foundry tests, an SDK encoder with a round-trip test and a docs page; CI checks that generated code passes its tests and `forge fmt` unchanged. See [`docs/guides/custom-actions.md`](docs/guides/custom-actions.md).
+
 ## Recurring payments
 
 **Recurring** creates an HBAR payment plan. The account schedules each instalment with the **Hedera Schedule Service** (`scheduleCall` on `0x16b`, HIP-1215); each execution pays the configured recipient and schedules the next — no server or keeper. Execution is permissionless but inert (only the owner-configured payment, only when due); creation and cancellation are owner-only. Scheduled transactions are paid by the account (~2M gas, about 1.5–1.7 testnet HBAR per instalment, because HSS `scheduleCall` itself costs ~1.54M gas), so it needs some HBAR.
@@ -137,7 +143,7 @@ Tools: `get_balance`, `get_policy` (caps, spent today, expiry, live HBAR/USD), `
 
 ## Token launchpad (recipe)
 
-`TokenLaunchpad` creates an HTS token through the Token Service with **no admin, supply, freeze, wipe or pause keys** and a finite supply, holds it as treasury, and sells it at a fixed price. Reaching the target lets anyone `graduate` the launch **exactly once** (the creator receives the HBAR; a second call reverts `AlreadyGraduated`); buyers and the creator then `claim` by HIP-904 airdrop, so nobody has to associate first. Missing the deadline opens one-time refunds instead. The creator pays the token-creation fee (about $1, unspent part refunded); a claim funds its own airdrop fee, and reverts rather than let it touch HBAR held for other launches. Agents have no typed action for buying launches.
+`TokenLaunchpad` creates an HTS token through the Token Service with **no admin, supply, freeze, wipe or pause keys** and a finite supply, and sells it along a **linear bonding curve** (start → end price, exact integral, rounded up). At the target anyone can `graduate` **exactly once**: the creator gets a capped fee (≤ 10%), and the rest of the raise plus reserved tokens seed a **SaucerSwap V1 HBAR/token pool** at the curve's final price (`addLiquidityETHNewPool`; the ~$2 pool fee is converted through the 0x168 exchange-rate precompile). LP tokens stay locked in the launchpad. A front-run pool gets liquidity added instead. Buyers and the creator `claim` by HIP-904 airdrop; a missed deadline opens refunds. Agents buy through the `launchpad-buy` action module within their USD caps.
 
 ## Hedera services used
 
@@ -166,6 +172,7 @@ All variables are documented in [`.env.example`](.env.example). Only `HEDERA_OPE
 | `yarn doctor` | toolchain, env, RPC, Mirror, balances, factory, topic, SaucerSwap quote, oracle/x402 status |
 | `yarn bootstrap [--fund]` | plan (dry run) or create accounts, deploy factory, create HCS topic, write deployment artifact |
 | `yarn prove:testnet` | run flows on testnet and write `TESTNET_VERIFICATION.md` |
+| `yarn new:action <name>` | scaffold a custom typed action (module, tests, SDK encoder, docs) |
 | `yarn sponsor:fund [HBAR] [--fund]` | top up the sponsor from the operator (dry run without `--fund`) |
 | `yarn mcp:start` | MCP server for an agent (see above) |
 | `yarn check:scaffold` | fresh `create-scaffold-hbar` scaffold → install, typecheck, lint, test, build, boot |
@@ -195,7 +202,7 @@ Add a typed action by giving it a stable ID in `Actions.sol` and `sdk/src/action
 - Supra testnet feeds update hourly (or on a 5% move); if a feed goes stale for over 2 hours, agent spending is denied until it updates.
 - x402 here settles through ConsumerAccounts (`transferExecutor`); `cryptoTransfer` payers use `@x402/hedera` directly.
 - Recurring payments are HBAR-only in the UI (the contract also supports HTS tokens).
-- The savings vault has no yield strategy; the launchpad sells at a fixed price (no bonding curve or DEX listing).
+- The savings vault has no yield strategy. Every candidate yield source on testnet was checked and is unusable: Bonzo Lend testnet rejects deposits (`CALLER_NOT_AUTHORIZED`), the SaucerSwap V1 WHBAR/USDC pool has had no trades since Dec 2024, and HBARX has no testnet deployment ([`docs/OPEN_QUESTIONS.md`](docs/OPEN_QUESTIONS.md) U15). We do not fabricate yield.
 - The browser controller key is a testnet convenience stored in localStorage, not production custody.
 
 ## Troubleshooting
