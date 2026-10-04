@@ -1,0 +1,95 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Contracts, SDK, relayer, MCP, app
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: yarn
+
+      - name: Install Foundry (forge + anvil for local e2e)
+        uses: foundry-rs/foundry-toolchain@v1
+
+      - name: Install
+        run: yarn install --immutable
+
+      - name: Template manifest
+        run: node -e "const t=require('./template.json'); if(!t.name||!t['create-scaffold-hbar']) throw new Error('template.json missing name or create-scaffold-hbar')"
+
+      - name: Solidity format
+        working-directory: packages/foundry
+        run: forge fmt --check
+
+      - name: Solidity build (sizes under EIP-170)
+        working-directory: packages/foundry
+        run: forge build --sizes
+
+      - name: Solidity tests (unit, fuzz, invariant, red team)
+        working-directory: packages/foundry
+        run: forge test
+
+      - name: Typecheck all workspaces
+        run: yarn typecheck
+
+      - name: Lint app
+        run: yarn next:lint --max-warnings=0
+
+      - name: TypeScript tests (SDK, relayer, MCP; Anvil e2e)
+        run: yarn test:integration
+
+      - name: Action generator end to end
+        run: |
+          yarn new:action ci-sample
+          (cd packages/foundry && forge fmt --check && forge test --match-contract CiSampleActionTest)
+          yarn workspace @sh/sdk vitest run test/customActions
+          yarn workspace @sh/sdk check-types
+          git checkout -- packages/sdk/src/customActions/index.ts
+          git clean -fdq packages/foundry/contracts/actions packages/foundry/test/actions packages/sdk/src/customActions packages/sdk/test/customActions docs/actions
+
+      - name: Production build
+        run: yarn next:build
+
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  scaffold:
+    name: Fresh external scaffold
+    if: github.event_name != 'pull_request'
+    needs: checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: foundry-rs/foundry-toolchain@v1
+      - name: create-scaffold-hbar → install → typecheck → lint → test → build → boot
+        run: bash scripts/check-scaffold.sh

@@ -93,6 +93,14 @@ contract ChunkedFactoryTest is AccountFixture {
         assertEq(a.owner(), stranger);
     }
 
+    function test_factoryRemembersAccountsAcrossOwnerChanges() public {
+        assertTrue(factory.isAccount(address(account)));
+        assertFalse(factory.isAccount(stranger));
+        vm.prank(address(account));
+        account.setOwner(stranger);
+        assertTrue(factory.isAccount(address(account))); // recovery / owner change keeps sponsorship eligibility
+    }
+
     function test_ownerIsBoundToTheAddress() public view {
         assertTrue(factory.getAddress(stranger, bytes32(0)) != factory.getAddress(ownerAddr, bytes32(0)));
     }

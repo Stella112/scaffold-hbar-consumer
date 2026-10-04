@@ -71,13 +71,14 @@ export async function POST(req: Request) {
   } catch {
     return NextResponse.json({ error: "NOT_A_CONSUMER_ACCOUNT" }, { status: 400 });
   }
-  const expected = await pc.readContract({
+  void owner;
+  const known = await pc.readContract({
     address: factory,
     abi: consumerAccountFactoryAbi,
-    functionName: "getAddress",
-    args: [owner, zeroHash],
+    functionName: "isAccount",
+    args: [account],
   });
-  if (getAddress(expected) !== account) return NextResponse.json({ error: "NOT_FROM_THIS_FACTORY" }, { status: 400 });
+  if (!known) return NextResponse.json({ error: "NOT_FROM_THIS_FACTORY" }, { status: 400 });
 
   if (busy) return NextResponse.json({ error: "FAUCET_BUSY: try again in a few seconds" }, { status: 429 });
   busy = true;

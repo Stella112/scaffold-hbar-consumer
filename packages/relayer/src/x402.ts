@@ -112,13 +112,14 @@ export class TransferExecutorFacilitator implements SchemeNetworkFacilitator {
     } catch {
       throw new Error(`executor ${c.contract_id} is not a ConsumerAccount`);
     }
-    const expected = await this.d.publicClient.readContract({
+    void owner;
+    const known = await this.d.publicClient.readContract({
       address: this.d.factory,
       abi: consumerAccountFactoryAbi,
-      functionName: "getAddress",
-      args: [owner, SALT_ZERO],
+      functionName: "isAccount",
+      args: [account],
     });
-    if (getAddress(expected) !== account) throw new Error(`executor ${c.contract_id} was not deployed by the admitted factory`);
+    if (!known) throw new Error(`executor ${c.contract_id} was not deployed by the admitted factory`);
     if (!this.admitted.has(c.contract_id)) {
       this.admitted.add(c.contract_id);
       if (this.file) {

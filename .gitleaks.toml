@@ -1,0 +1,13 @@
+title = "scaffold-hbar-consumer"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Publicly documented development keys with no real funds"
+regexes = [
+  # Anvil / Hardhat default account #0, used only by local Anvil e2e tests
+  '''ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80''',
+  # Hedera local-node default ECDSA account from the upstream Scaffold-HBAR Makefile
+  '''2a871d0798f97d79848a013d4936a73bf4cc922c825d33c1cf7073dff6d409c6''',
+]

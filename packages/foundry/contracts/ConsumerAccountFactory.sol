@@ -18,6 +18,9 @@ contract ConsumerAccountFactory {
     address[] public codeChunks;
     /// keccak256 of the concatenated creation code, checked at construction.
     bytes32 public immutable accountCodeHash;
+    /// Every account this factory deployed. Stays true after guardian recovery changes the owner (the CREATE2 address
+    /// is derived from the original owner, so it cannot identify recovered accounts).
+    mapping(address => bool) public isAccount;
     /// Oracle given to new accounts. Owners can change it later through a signed self-call.
     IPriceOracle public immutable defaultOracle;
 
@@ -49,6 +52,7 @@ contract ConsumerAccountFactory {
         }
         if (deployed == address(0)) revert DeployFailed();
         account = ConsumerAccount(payable(deployed));
+        isAccount[deployed] = true;
         emit AccountCreated(deployed, owner, salt);
     }
 

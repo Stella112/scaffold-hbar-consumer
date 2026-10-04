@@ -293,14 +293,15 @@ export class Sponsor {
 
   /** Sponsorship is only offered to accounts deployed by this relayer's factory (default salt 0). */
   private async requireFactoryAccount(account: Address): Promise<void> {
-    const owner = await this.readOwner(account);
-    const expected = await this.d.publicClient.readContract({
+    await this.readOwner(account);
+    // The factory records every account it deployed; this survives guardian recovery changing the owner.
+    const known = await this.d.publicClient.readContract({
       address: this.d.factory,
       abi: consumerAccountFactoryAbi,
-      functionName: "getAddress",
-      args: [owner, `0x${"0".repeat(64)}`],
+      functionName: "isAccount",
+      args: [account],
     });
-    if (getAddress(expected) !== account) throw new Error("account was not deployed by this sponsor's factory");
+    if (!known) throw new Error("account was not deployed by this sponsor's factory");
   }
 
   private async readOwner(account: Address): Promise<Address> {
