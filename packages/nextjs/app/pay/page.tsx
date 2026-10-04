@@ -14,6 +14,7 @@ import {
 import type { NextPage } from "next";
 import type { Address, LocalAccount } from "viem";
 import { AccountGate } from "~~/components/consumer/AccountGate";
+import { QrScanner } from "~~/components/consumer/QrScanner";
 import { ReceiptCard } from "~~/components/consumer/ReceiptCard";
 import { saveReceipt } from "~~/services/consumer/activity";
 import { assetByAddress } from "~~/services/consumer/assets";
@@ -47,6 +48,7 @@ function PayForm({
 }) {
   const params = useSearchParams();
   const [raw, setRaw] = useState(params.get("r") ?? "");
+  const [scanning, setScanning] = useState(false);
   const [signed, setSigned] = useState<SignedPaymentRequest | null>(null);
   const [check, setCheck] = useState<PaymentRequestCheck | null>(null);
   const [plan, setPlan] = useState<Plan | null>(null);
@@ -134,6 +136,19 @@ function PayForm({
             onChange={e => setRaw(e.target.value)}
           />
         </label>
+        {scanning ? (
+          <QrScanner
+            onResult={text => {
+              setScanning(false);
+              setRaw(text);
+            }}
+            onClose={() => setScanning(false)}
+          />
+        ) : (
+          <button className="btn btn-sm btn-outline" onClick={() => setScanning(true)}>
+            Scan QR code
+          </button>
+        )}
         {error ? <div className="alert alert-error text-sm">{error}</div> : null}
         {signed && check ? (
           <div className="flex flex-col gap-2">
