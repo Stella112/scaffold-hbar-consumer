@@ -1,13 +1,14 @@
 # Build state
 
-**Updated:** 2026-10-04 · **Status:** all planned features built and verified on Hedera testnet; live app deployed.
+**Updated:** 2026-10-05 · **Status:** all planned features built and verified on Hedera testnet; live app deployed.
 
 ## Gates
 
 | Gate | Status | Evidence |
 | --- | --- | --- |
-| `forge fmt --check`, `forge build`, `forge test` | PASS | 124 tests: owner intents, session policy, session fee caps, x402 executor, recovery, chunked factory, swap-to-pay, Supra oracle (incl. fuzz), HSS subscriptions, savings vault, launchpad |
-| SDK / relayer / MCP tests | PASS | 19 / 22 / 3 (incl. Anvil e2e, x402 settlement-record conformance, MCP over in-memory transport) |
+| `forge fmt --check`, `forge build`, `forge test` | PASS | 137 tests: unit, fuzz, invariant (session policy), action modules, chunked factory, launchpad curve + graduation, HSS, vault, oracle, recovery |
+| SDK / relayer / MCP tests | PASS | 19 / 22 / 5 (incl. Anvil e2e, x402 settlement-record conformance, MCP over in-memory transport) |
+| GitHub CI | PASS | checks, gitleaks secret scan, fresh external scaffold |
 | lint / typecheck / build (Linux VPS, fresh clone) | PASS | |
 | Fresh external scaffold gate | PASS | `yarn check:scaffold` (rerun on final code before submission) |
 | `yarn doctor` | PASS | no FAIL |
@@ -25,18 +26,21 @@
 | Raw-call bypass (relayer + on-chain + HCS) | VERIFIED_TESTNET | 9 |
 | HSS recurring payments | VERIFIED_TESTNET | 10 |
 | Savings vault | VERIFIED_TESTNET | 11 |
-| Token launchpad | VERIFIED_TESTNET | 12 |
+| Token launchpad: bonding curve, graduation into SaucerSwap | VERIFIED_TESTNET | 12 |
 | Network fees counted against agent caps | VERIFIED_TESTNET | 13 |
-| Guardian recovery | VERIFIED_LOCAL | Foundry `RecoveryTest` |
+| HIP-904 claim by the recipient | VERIFIED_TESTNET | 14 |
+| Guardian recovery | VERIFIED_TESTNET | 15 |
+| Vault yield strategy | BLOCKED_EXTERNAL | `docs/OPEN_QUESTIONS.md` U15 |
 
 ## Live deployments (testnet)
 
 | Item | ID |
 | --- | --- |
-| ConsumerAccountFactory | 0.0.10853888 (`0x3894bc8ed3c285a285566c352a674223dcf379af`); account code in 3 SSTORE2 chunks |
+| ConsumerAccountFactory | 0.0.10859678 (`0x2c952374e796f2f42053ba20a5417abb10ba752f`); account code in SSTORE2 chunks, `isAccount` registry |
 | SupraPriceOracle | 0.0.10844780 |
 | SavingsVault (WHBAR) | 0.0.10848627 |
-| TokenLaunchpad | 0.0.10848836 |
+| TokenLaunchpad (curve + SaucerSwap V1 graduation) | 0.0.10860013 |
+| LaunchpadBuyAction module | 0.0.10860015 |
 | HCS audit topic | 0.0.10841526 |
 | Sponsor / merchant / unassociated | 0.0.10841387 / 0.0.10841388 / 0.0.10841389 |
 | App | https://hbar.getqueryflow.xyz (systemd `scaffold-hbar-consumer`, Caddy) |
