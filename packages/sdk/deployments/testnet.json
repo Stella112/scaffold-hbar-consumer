@@ -1,9 +1,9 @@
 {
   "network": "testnet",
   "chainId": 296,
-  "updatedAt": "2026-10-04T16:25:38.062Z",
-  "factory": "0x7b0820f5b02c58c5823aeeb8dc3bc5470934e2f2",
-  "factoryContractId": "0.0.10859397",
+  "updatedAt": "2026-10-04T16:49:44.183Z",
+  "factory": "0x2c952374e796f2f42053ba20a5417abb10ba752f",
+  "factoryContractId": "0.0.10859678",
   "auditTopicId": "0.0.10841526",
   "tokens": {
     "USDC": {
@@ -36,7 +36,7 @@
     "label": "Supra push feed 0x6Cd59830AAD978446e6cc7f6cc173aF7656Fb917: HBAR→HBAR_USD(432), WHBAR→HBAR_USD(432), USDC→USDC_USD(89); max age 7200s",
     "contractId": "0.0.10844780"
   },
-  "factoryCodeHash": "0xf2fb90a84f78128880ccc754ae9a5f5e10a60116ca8523aab6ab5f82f8c08a34",
+  "factoryCodeHash": "0x24e57469c651d209bd29cab31a043af0f66a162d19064e9f0c428ce3a563d862",
   "vaults": {
     "WHBAR": {
       "address": "0xb56a7a4aa5691b270a913a3419a542a728a05ed6",
@@ -50,8 +50,8 @@
     "codeHash": "0x380f33fcefc4aa740f063f58cce80d0b87c78905306abeed4d59a08923d594bb"
   },
   "accountCodeChunks": [
-    "0x3321c8aa494755b21c833c45eff332a862c09828",
-    "0xefc8bfc1d2f9bbf5091dc8f81a3a55326007eba9"
+    "0x1a3eeda35dd0f1db9c71c29985a24e89f4b9ae43",
+    "0x312e1fd466bd74f243e17e93d4c230e8cfbeb358"
   ],
   "actionModules": {
     "launchpadBuy": {
