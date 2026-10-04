@@ -46,3 +46,10 @@ airdrop) is charged to **the calling contract's own HBAR**, not to the transacti
 5: the ConsumerAccount was debited, the sponsor only paid gas). A contract with no HBAR gets
 `INSUFFICIENT_PAYER_BALANCE` (10). `TokenLaunchpad.claim` is therefore payable: the claimer funds the fee and gets
 the unspent part back, and the claim reverts if the fee would exceed what was sent.
+
+## SaucerSwap pool creation from a contract needs ~8.3M gas
+
+`addLiquidityETHNewPool` called by a contract (launchpad graduation) creates the pair, its HTS LP token and the
+pair's token associations. With 4M gas the pair's association step failed `INSUFFICIENT_GAS` and the router reverted
+`Safe multiple associations failed!`; with 10M it used 8,251,666 gas (testnet 2026-10-04, pool 0.0.10860103). The
+pool fee ($2 = ~19.5 testnet HBAR) is converted from tinycents through the 0x168 exchange-rate precompile.

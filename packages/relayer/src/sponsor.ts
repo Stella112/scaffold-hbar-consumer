@@ -65,7 +65,8 @@ const MIN_GAS = 150_000n;
 // charge for unassociated receivers) into gas at execution time. Observed: 150k and later 1.5M (through an account
 // clone) → INSUFFICIENT_GAS from 0x167; 2.5M leaves headroom.
 const AIRDROP_MIN_GAS = 2_500_000n;
-const MAX_GAS = 6_000_000n;
+// SaucerSwap pool creation from a contract (launchpad graduation) measured ~8.3M gas on testnet.
+const MAX_GAS = 12_000_000n;
 
 type Prepared = {
   user: string;

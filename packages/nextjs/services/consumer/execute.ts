@@ -42,6 +42,8 @@ export const ownerCalls = async (controller: LocalAccount, account: Address, cal
 
 /** Gas floor for intents with HTS association / HIP-904 work (their fees become gas; estimates miss them). */
 export const HTS_INTENT_GAS = 2_500_000n;
+/** Graduation creates a SaucerSwap pool and LP token (~8.3M gas measured on testnet). */
+export const GRADUATE_GAS = 11_000_000n;
 
 const typedAction = async (
   controller: LocalAccount,
@@ -264,6 +266,6 @@ export async function launchCall(
         data: encodeFunctionData({ abi: tokenLaunchpadAbi, functionName: fn, args: [id] }),
       },
     ],
-    fn === "claim" ? HTS_INTENT_GAS : undefined,
+    fn === "claim" ? HTS_INTENT_GAS : fn === "graduate" ? GRADUATE_GAS : undefined,
   );
 }

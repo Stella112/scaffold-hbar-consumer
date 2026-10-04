@@ -720,8 +720,8 @@ await flow(12, "Token launchpad: bonding curve, one-time graduation into SaucerS
   out.push(b);
 
   const creatorBefore = (await M.getHbarBalance(account)).tinybars;
-  // Creating the pool and minting liquidity through SaucerSwap is HTS-heavy; give it the router's recommended gas.
-  const gradHash = await operatorWallet.writeContract({ address: pad.address, abi: padAbi, functionName: "graduate", args: [id], gas: 4_000_000n, chain: operatorWallet.chain, account: operatorWallet.account! });
+  // Creating the pool, its LP token and associations through SaucerSwap is HTS-heavy: ~8.3M gas measured on testnet.
+  const gradHash = await operatorWallet.writeContract({ address: pad.address, abi: padAbi, functionName: "graduate", args: [id], gas: 10_000_000n, chain: operatorWallet.chain, account: operatorWallet.account! });
   const gradRcpt = await pc.waitForTransactionReceipt({ hash: gradHash });
   await M.waitForContractResult(gradHash).catch(() => null);
   await new Promise(r => setTimeout(r, 6000));
