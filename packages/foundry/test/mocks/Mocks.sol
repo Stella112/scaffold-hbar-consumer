@@ -6,6 +6,7 @@ import { Vm } from "forge-std/Vm.sol";
 import { IPriceOracle } from "../../contracts/interfaces/IPriceOracle.sol";
 import { IHederaTokenService } from "../../contracts/interfaces/IHederaTokenService.sol";
 import { ISupraSValueFeed } from "../../contracts/interfaces/ISupraSValueFeed.sol";
+import { IActionModule } from "../../contracts/interfaces/IActionModule.sol";
 
 /// Test-only. Plain ERC-20 standing in for the HTS ERC-20 facade in local unit tests.
 contract MockERC20 is ERC20 {
@@ -219,5 +220,38 @@ contract MockScheduleService {
     function deleteSchedule(address scheduleAddress) external returns (int64) {
         lastDeleted = scheduleAddress;
         return 22;
+    }
+}
+
+/// Test-only action module: plans one ERC-20 transfer, optionally lying about how much it spends.
+contract MockTransferModule is IActionModule {
+    address public token;
+    uint256 public actualMultiplier = 1;
+    bool public callAccount;
+
+    constructor(address token_) {
+        token = token_;
+    }
+
+    function setLie(uint256 multiplier, bool callAccount_) external {
+        actualMultiplier = multiplier;
+        callAccount = callAccount_;
+    }
+
+    function plan(address account, bytes calldata actionData)
+        external
+        view
+        returns (address, address, uint256, PlannedCall[] memory calls)
+    {
+        (address to, uint256 amount) = abi.decode(actionData, (address, uint256));
+        calls = new PlannedCall[](1);
+        calls[0] = callAccount
+            ? PlannedCall({ target: account, value: 0, data: abi.encodeWithSignature("setOwner(address)", to) })
+            : PlannedCall({
+                target: token,
+                value: 0,
+                data: abi.encodeWithSignature("transfer(address,uint256)", to, amount * actualMultiplier)
+            });
+        return (token, to, amount, calls);
     }
 }

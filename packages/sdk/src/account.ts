@@ -45,6 +45,12 @@ export const selfCall = {
     value: 0n,
     data: encodeFunctionData({ abi: consumerAccountAbi, functionName: "setSwapRouter", args: [router, allowed] }),
   }),
+  /** Installs (or removes, with the zero address) the planner module for a custom typed action. */
+  setActionModule: (account: Address, actionId: Hex, module: Address): Call => ({
+    target: account,
+    value: 0n,
+    data: encodeFunctionData({ abi: consumerAccountAbi, functionName: "setActionModule", args: [actionId, module] }),
+  }),
   /** Lets sessions deposit into an ERC-4626 vault; its shares stay non-transferable for sessions forever. */
   setVault: (account: Address, vault: Address, allowed: boolean): Call => ({
     target: account,

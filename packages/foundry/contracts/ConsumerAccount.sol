@@ -10,6 +10,7 @@ import { IHederaTokenService } from "./interfaces/IHederaTokenService.sol";
 import { IPriceOracle } from "./interfaces/IPriceOracle.sol";
 import { IHederaScheduleService } from "./interfaces/IHederaScheduleService.sol";
 import { IERC4626 } from "@openzeppelin/contracts/interfaces/IERC4626.sol";
+import { IActionModule } from "./interfaces/IActionModule.sol";
 import { ITransferExecutor } from "./interfaces/ITransferExecutor.sol";
 import { Actions } from "./Actions.sol";
 import { ISaucerSwapV2Router } from "./interfaces/ISaucerSwapV2Router.sol";
@@ -182,6 +183,7 @@ contract ConsumerAccount is EIP712, ReentrancyGuard, ITransferExecutor {
     event TokenAssociated(address indexed token);
     event SwapRouterSet(address indexed router, bool allowed);
     event VaultSet(address indexed vault, bool allowed);
+    event ActionModuleSet(bytes32 indexed id, address module);
     event SessionFeeCharged(address indexed key, uint256 tinybars, uint256 usd6);
     event VaultDeposited(address indexed signer, address indexed vault, uint256 assets, uint256 shares);
     event SubscriptionCreated(
@@ -225,6 +227,9 @@ contract ConsumerAccount is EIP712, ReentrancyGuard, ITransferExecutor {
     mapping(address => bool) public vaultAllowed;
     /// @notice Share tokens of every vault ever allowed. Sessions can never move them: that would be a withdrawal.
     mapping(address => bool) public isVaultShare;
+
+    /// @notice Planner module installed for each custom typed action ID (see IActionModule).
+    mapping(bytes32 => address) public actionModule;
 
     mapping(uint256 => Subscription) public subscriptions;
     uint256 public subscriptionCount;
@@ -327,6 +332,9 @@ contract ConsumerAccount is EIP712, ReentrancyGuard, ITransferExecutor {
             return (usd6, 0);
         }
 
+        address module = actionModule[id];
+        if (module != address(0)) return _runModule(module, id, actionData, signer, isOwner);
+
         (address asset, address to, uint256 amount) = _decodeTransferAction(id, actionData);
         usd6 = isOwner ? 0 : _chargeSession(signer, asset, to, amount);
 
@@ -411,6 +419,16 @@ contract ConsumerAccount is EIP712, ReentrancyGuard, ITransferExecutor {
         if (router == address(0) || router == HTS || router == address(this)) revert InvalidConfig();
         swapRouterAllowed[router] = allowed;
         emit SwapRouterSet(router, allowed);
+    }
+
+    /// @notice Installs (or removes, with address(0)) the planner module for a custom typed action ID.
+    function setActionModule(bytes32 id, address module) external onlySelf {
+        if (
+            Actions.isPrivileged(id) || Actions.isWithdrawal(id) || id == Actions.PAYMENT || id == Actions.AIRDROP
+                || id == Actions.X402_PAYMENT || id == Actions.SWAP_TO_PAY || id == Actions.VAULT_DEPOSIT
+        ) revert InvalidConfig();
+        actionModule[id] = module;
+        emit ActionModuleSet(id, module);
     }
 
     /// @notice Allows or disallows session deposits into an ERC-4626 vault. Its share token stays non-transferable
@@ -652,6 +670,28 @@ contract ConsumerAccount is EIP712, ReentrancyGuard, ITransferExecutor {
 
     /// @dev Any HBAR that left the account during a session action beyond what the action meant to send (network fees
     ///      charged to the contract, such as HIP-904 airdrop fees) is priced and charged against the same caps.
+    function _runModule(address module, bytes32 id, bytes calldata actionData, address signer, bool isOwner)
+        internal
+        returns (uint256 usd6, uint256 intendedHbar)
+    {
+        (address asset, address to, uint256 amount, IActionModule.PlannedCall[] memory calls) =
+            IActionModule(module).plan(address(this), actionData);
+        usd6 = isOwner ? 0 : _chargeSession(signer, asset, to, amount);
+        uint256 before = asset == address(0) ? 0 : IERC20(asset).balanceOf(address(this));
+        for (uint256 i; i < calls.length; ++i) {
+            IActionModule.PlannedCall memory c = calls[i];
+            if (c.target == address(this) || c.target == HTS) revert TargetNotAllowed();
+            (bool ok, bytes memory ret) = c.target.call{ value: c.value }(c.data);
+            if (!ok) revert CallFailed(i, ret);
+        }
+        if (asset != address(0)) {
+            uint256 afterBal = IERC20(asset).balanceOf(address(this));
+            if (afterBal < before && before - afterBal > amount) revert PerCallCapExceeded();
+        }
+        emit ActionExecuted(id, signer, asset, to, amount, usd6);
+        return (usd6, asset == address(0) ? amount : 0);
+    }
+
     function _chargeHbarOutflow(address key, uint256 hbarBefore, uint256 intendedHbar, uint256 alreadyUsd6) internal {
         uint256 hbarAfter = address(this).balance;
         if (hbarAfter >= hbarBefore || hbarBefore - hbarAfter <= intendedHbar) return;

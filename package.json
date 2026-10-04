@@ -64,7 +64,8 @@
     "check:scaffold": "bash scripts/check-scaffold.sh",
     "sponsor:fund": "yarn workspace @sh/scripts sponsor:fund",
     "mcp:start": "yarn workspace @sh/mcp start",
-    "mcp:test": "yarn workspace @sh/mcp test"
+    "mcp:test": "yarn workspace @sh/mcp test",
+    "new:action": "yarn workspace @sh/scripts new:action"
   },
   "packageManager": "yarn@3.2.3",
   "devDependencies": {
