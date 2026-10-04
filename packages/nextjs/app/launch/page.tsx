@@ -225,28 +225,37 @@ const LaunchPage: NextPage = () => {
                               </button>
                             ) : null}
                             {l.graduated ? (
-                              <button
-                                className="btn btn-xs"
-                                disabled={busy !== null}
-                                onClick={() =>
-                                  run(`claim-${key}`, () =>
-                                    launchCall(controller, account.address, "claim", l.id, l.token),
-                                  )
-                                }
+                              <IfOwed
+                                id={l.id}
+                                account={account.address}
+                                kind="bought"
+                                creatorShare={mine && !l.creatorClaimed}
                               >
-                                Claim tokens
-                              </button>
+                                <button
+                                  className="btn btn-xs"
+                                  disabled={busy !== null}
+                                  onClick={() =>
+                                    run(`claim-${key}`, () =>
+                                      launchCall(controller, account.address, "claim", l.id, l.token),
+                                    )
+                                  }
+                                >
+                                  Claim tokens
+                                </button>
+                              </IfOwed>
                             ) : null}
                             {failed ? (
-                              <button
-                                className="btn btn-xs"
-                                disabled={busy !== null}
-                                onClick={() =>
-                                  run(`refund-${key}`, () => launchCall(controller, account.address, "refund", l.id))
-                                }
-                              >
-                                Refund
-                              </button>
+                              <IfOwed id={l.id} account={account.address} kind="paid" creatorShare={false}>
+                                <button
+                                  className="btn btn-xs"
+                                  disabled={busy !== null}
+                                  onClick={() =>
+                                    run(`refund-${key}`, () => launchCall(controller, account.address, "refund", l.id))
+                                  }
+                                >
+                                  Refund
+                                </button>
+                              </IfOwed>
                             ) : null}
                           </div>
                         </div>
@@ -262,5 +271,34 @@ const LaunchPage: NextPage = () => {
     </div>
   );
 };
+
+/** Renders its children only if this account is owed something by the launch (tokens to claim / HBAR to refund). */
+function IfOwed({
+  id,
+  account,
+  kind,
+  creatorShare,
+  children,
+}: {
+  id: bigint;
+  account: `0x${string}` | string;
+  kind: "bought" | "paid";
+  creatorShare: boolean;
+  children: React.ReactNode;
+}) {
+  const owed = useQuery({
+    queryKey: ["launch-owed", id.toString(), account, kind],
+    refetchInterval: 15_000,
+    queryFn: () =>
+      publicClient.readContract({
+        address: pad!.address,
+        abi: tokenLaunchpadAbi,
+        functionName: kind,
+        args: [id, account as `0x${string}`],
+      }),
+  });
+  if (!creatorShare && !(owed.data && owed.data > 0n)) return null;
+  return <>{children}</>;
+}
 
 export default LaunchPage;

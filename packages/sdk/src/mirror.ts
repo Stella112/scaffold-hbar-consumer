@@ -58,7 +58,8 @@ export class MirrorClient {
 
   constructor(opts: MirrorClientOptions = {}) {
     this.baseUrl = (opts.baseUrl ?? HEDERA_TESTNET.mirrorUrl).replace(/\/$/, "");
-    this.fetchImpl = opts.fetchImpl ?? fetch;
+    // Wrap the global so it is never invoked as a method of this object (browsers throw "Illegal invocation").
+    this.fetchImpl = opts.fetchImpl ?? ((input, init) => fetch(input, init));
   }
 
   async get<T>(path: string): Promise<T> {
